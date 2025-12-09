@@ -54,8 +54,8 @@ def run_MICO(IMGdata,outputPath):
 
     nz_all = vol_norm[vol_norm > 0]  # all voxels above 0 in volume
     if nz_all.size > 0:
-        #e.g. global median as threshold (50. Perzentil)
-        global_thr = np.percentile(nz_all, 50)
+        #e.g. global median as threshold (60. Perzentil)
+        global_thr = np.percentile(nz_all, 60)
         print(f"Global ROI-threshold of volumen: {global_thr:.3f}")
     else:
         global_thr = 0.0
@@ -104,8 +104,15 @@ def run_MICO(IMGdata,outputPath):
             # Fallback: simple non-zero thresholding
             ROIt = Img > 0
 
-        ROI = np.zeros((nrow, ncol))
-        ROI[ROIt] = 1
+        # Fallback if the ROI is too small (e.g., edge slice)
+        if ROIt.sum() < 200:
+            nz = Img[Img > 0]
+            if nz.size > 0:
+                local_thr = np.percentile(nz, 40)  # softer
+                ROIt = Img > local_thr
+
+        ROI = np.zeros((nrow, ncol), dtype=np.float32)
+        ROI[ROIt] = 1.0
 
         Bas = getBasisOrder3(nrow, ncol)
 
