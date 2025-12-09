@@ -88,7 +88,7 @@ def smoothIMG(input_file, output_path):
     """
     data = nii.load(input_file)
     vol = data.get_fdata()
-    ImgSmooth = np.min(vol, 3)
+    ImgSmooth = np.min(vol, 3) # maybe changing this to mean or median
 
     unscaledNiiData = nii.Nifti1Image(ImgSmooth, data.affine)
     hdrOut = unscaledNiiData.header
