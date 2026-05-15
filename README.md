@@ -80,8 +80,8 @@ AIDAmri supports data processing exclusively for datasets in NIfTI (.nii/.nii.gz
 all input data for preprocessing must be in <ins>**LIP (Left-Inferior-Posterior)**</ins> orientation.
 Furthermore, the image header information must be consistent with the physical orientation of the data array. 
 Any mismatch between the header orientation and the actual voxel layout can lead to registration errors or incorrect alignment with the atlas. It is therefore strongly recommended to verify and, if necessary, correct the header orientation. 
-Please use FSL eyes for visual inspection and fslhd for checking the header information. FSL is already installed inside AIDAmri. More Information about FSL can be find [here](https://fsl.fmrib.ox.ac.uk/fsl/docs/).
-If your data is in a different orientation than LIP please use our ReorientBatch.py script in the [helpertools](bin/helper_tools) folder. The script should be used **after** convert2Nifti script and **before** procesing any files.  ReorientBatch.py can reorient the whole proc_data folder. 
+Please use FSL eyes for visual inspection and `fslhd` for checking the header information. FSL is already installed inside AIDAmri. More Information about FSL can be find [here](https://fsl.fmrib.ox.ac.uk/fsl/docs/).
+If your data is in a different orientation than LIP please use our ReorientBatch.py script in the [helpertools](bin/helper_tools) folder. The script should be used **after** convert2Nifti script and **before** processing any files.  ReorientBatch.py can reorient the whole proc_data folder. 
 It is important that the folder contains only the NIFTI files to be reoriented. The folder must not contain any NIFTI files that have already been processed. 
 Furthermore, please note that after reorientation, tools such as Fiji or other tools that do not read the header of a NIFTI file will display the images only as the data was saved after reorientation. 
 For this reason, we recommend FSL Eyes, as this tool provides more information about the orientation. 
