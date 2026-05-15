@@ -306,7 +306,6 @@ def applyBET(input_file, frac, radius, horizontal_gradient,
             "/aida/bin/bet4animal",
             bet_in,
             tmp_bet,
-            "-f", str(frac),
             "-m", #mask
             "-w", str(w_value),
             "-z", str(species_id),
