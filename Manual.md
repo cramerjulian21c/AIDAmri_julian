@@ -1,9 +1,9 @@
 # Atlas-based Imaging Data Analysis Pipeline for Functional and Structural MRI Data
 
-**AIDAmri v2.0**  
+**AIDAmri v3.0**  
 Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt  
-**Status:** September 2024  
-Department of Neurology, University Hospital Cologne
+**Status:** May 2026  
+Department of Neurology, University Hospital Frankfurt, Germany
 
 ## Contents
 
@@ -110,7 +110,7 @@ We advise you to get comfortable with shell or command-line interface usage.
 
 Download or clone the repository:
 
-```bash
+```text
 git clone https://github.com/aswendtlab/AIDAmri.git
 ```
 
@@ -140,201 +140,135 @@ When referring to the mounted volume while in the container, use the path given 
 
 ### Creating image
 
-To initiate the image building process, open your shell to access the command-line interface. Change your directory to the cloned GitHub repository:
+Before you can build the Docker image, you need to open a terminal. In the terminal, change into the AIDAmri repository folder that you previously cloned from GitHub:
 
-```bash
+```text
 cd PATH/TO/AIDAmri
 ```
 
+Replace `PATH/TO/AIDAmri` with the actual path to your local AIDAmri folder.
+
 Check the folder contents with:
 
-```bash
+```text
 ls
 ```
 
 A file named `Dockerfile`, as well as `fslinstaller_mod.py`, a `bin/` folder and a `lib/` folder should be located in this directory. Then launch the Docker daemon to build the image:
 
-```bash
+```text
 docker build -t aidamri:latest -f Dockerfile .
 ```
 
-The created image is a template for running containers and instantiating the pipeline. Be aware that the period at the end is part of the command and refers to the corresponding directory.
+The created image is a template for running containers and instantiating the pipeline. Be aware that the **period** at the end is part of the command and refers to the corresponding directory.
 
 The `-t` flag sets the name and tag of the image. In this example, it is called `aidamri` and tagged `latest`. You may change the name and tag, but remember to change them accordingly in later steps that invoke the image. The `-f` flag refers to the `Dockerfile` in the current directory.
 
-You only need to run the building process once initially or after updating the GitHub repository after new changes were made. If an update occurred, the building process will only update changed layers, so the process will not take as long as the initial build.
+You only need to build the Docker image once during the initial installation.  
+After updating the GitHub repository, for example with `git pull`, you should rebuild the image so that the new code is included.
 
+Docker usually uses its build cache during this process. This means that unchanged parts of the image are reused, and only the layers affected by the update are rebuilt. Therefore, rebuilding the image after a code update is usually faster than the initial build.
+
+Keep in mind that existing containers are not updated automatically. To use the updated image, stop and remove the old container, then start a new container from the rebuilt image.
 ### Running container and mounting data
 
-Before running a container, make sure you know exactly where the data you wish to process is located on your host system. The container will be an instance written from the built image and serves as an environment for using the AIDAmri pipeline.
+Before starting the container, check where your MRI data is stored on your computer. You will need the **absolute path** to this folder.
+To start an AIDAmri container and make your data available inside it, run:
 
-To run the container, enter the following command:
-
-```bash
+```text
 docker run -dit \
-  --name aidamri \
+  --name aidamri_container \
   --mount type=bind,source=PATH/TO/DATA,target=/aida/DATA \
   aidamri:latest
 ```
 
-The `-dit` flags start the container in detached mode (`d`) and interactive mode (`it`). Alternatively, you can directly enter the container environment by only using the `-it` flag. With the `--name` flag, you give your container a name. In this case it is called `aidamri`.
+The command performs the following function:
+`docker run` starts a new container from the AIDAmri Docker image.
+`-dit` starts the container in the background while keeping it interactive. This means the container keeps running, and you can enter it later.
 
-The image name and the container name are independent. It is recommended to give your container a different name from the image to avoid confusion. If you wish to use more than one running container instance, for example to process multiple datasets simultaneously, each container needs a different name.
+`--name aidamri_container` gives the container a name. The container name is independent from the image name. In this example, the image is called `aidamri:latest`, while the container is called `aidamri_container`. If you wish to use more than one running container instance, for example to process multiple datasets simultaneously, each container needs a different name.
 
-Bind mounts create a reference to a given directory, allowing the container to access and process data on the host system. In this case, it allows the pipeline to process MRI data without copying or reallocating the data.
+`--mount type=bind,source=PATH/TO/DATA,target=/aida/DATA` connects a folder from your computer to a folder inside the container. This is called a bind mount. It allows AIDAmri to access and process your MRI data without copying it into the container.
 
-The `--mount` flag with the `type=bind` argument grants the container access to the target directory. Use the absolute path at the `source` placeholder. Do not use relative paths. Within the container environment, a working directory called `/aida/` was created. It is recommended to allocate your reference path within this directory, for example `/aida/DATA`.
+`source=PATH/TO/DATA` is the data folder where your data that you want to process is stored on your computer. Always use an absolute path here! 
+`target=/aida/DATA` is the location where the same folder will appear inside the container. So you do not need to use the absolute path inside the container, but can refer to the mounted data with `/aida/DATA`.
 
-Pass the name and tag of your image, here `aidamri:latest`, at the end of the command line. After initializing, an ID will appear and Docker Desktop should show the running container. You can also check whether the container is running by typing:
+`aidamri:latest` is the Docker image that is used to create the container.
 
-```bash
-docker container ls
+After running the command, Docker will print a container ID. You can check whether the container is running with:
+
+```text
+docker aidamri_container ls
 ```
 
 To enter the running container, use:
 
-```bash
-docker attach aidamri
+```text
+docker attach aidamri_container
 ```
 
 Windows users can leave a running container without stopping it by pressing `CTRL+P` and `CTRL+Q` consecutively. Alternatively, typing `exit` will stop the container.
 
 Use the following to re-run the container:
 
-```bash
-docker start aidamri
+```text
+docker start aidamri_container
 ```
 
 Type `stop` instead of `start` to stop an already running container.
 
-When successfully attached, the shell prompt will look like this:
+After successfully attaching to the container, your terminal should look similar to this:
 
 ```text
 root@<SOME NUMBERS AND CHARACTERS>:/aida#
 ```
 
-The number shows the first part of the container ID. From here, use the AIDAmri commands as explained in the usage sections. As a start, change your directory to the binary folder and run the help command:
+The number-and-letter combination is the first part of the container ID.  
+You are now inside the running AIDAmri container.
 
-```bash
+From here, you can use the AIDAmri commands described in the usage sections.  
+As a first test, change into the `bin/` folder and open the help page of the batch processing script:
+
+```text
 cd bin/
 python batchProg.py -h
 ```
 
-Alternatively, use `docker exec` to pipe a command into the running container without entering its interactive environment. For example, to run the `batchProg` help page:
+If the help page is displayed, the container is working and AIDAmri can be used.
 
-```bash
-docker exec -w /aida/bin aidamri \
+Alternatively, you can use `docker exec` to run a command inside the container without entering the container shell.
+
+For example, to open the help page of `batchProg.py`, run:
+
+```text
+docker exec -w /aida/bin aidamri-container \
   python batchProg.py -h
 ```
 
-The `-w` flag acts as a directory change by inputting the directory where `batchProg` is located, `/aida/bin`.
-
-### Built-in installation legacy
-
-AIDAmri can be installed without Docker on your host machine. Be advised that the installation process is tedious and error prone due to the different dependencies and their installation processes.
-
-1. Download the folders `/bin` and `/lib` by using the provided repository link. `/bin` and `/lib` should be located in the same directory.
-
-   Alternatively, clone the repository:
-
-   ```bash
-   git clone https://github.com/Aswendt-lab/AIDAmri
-   ```
-
-   The folder `/bin` contains the Python scripts necessary for all preprocessing steps. The folder `/lib` contains information about six atlases. Please do not change these files, because changes could influence access from the Python scripts.
-
-2. Download and install the appropriate DSI Studio and copy the install path into:
-
-   ```text
-   .../bin/3.2 DTIConnectivity/dsi_studioPath.txt
-   ```
-
-   On Ubuntu, if an error says that `libQt6Charts.so.6` could not be found, run:
-
-   ```bash
-   sudo apt install libqt6charts6-dev
-   ```
-
-3. Download FSL installer 3.3.0. To install FSL, use:
-
-   ```bash
-   python3 fslinstaller.py -V 5.0.11
-   ```
-
-4. Download and install the latest version of CMake.
-
-   - Unpack the downloaded archive and switch to the directory using `cd`.
-   - Run the following command to install CMake:
-
-   ```bash
-   ./bootstrap && make && sudo make install
-   ```
-
-   ![Figure 4: Installation instructions to install CMake.](images/figure-4-cmake-installation.png)
-
-   *Figure 4: Installation instructions to install CMake.*
-
-5. Download and install Python 3.6 or higher using Anaconda and run:
-
-   ```bash
-   pip install nipype==1.1.2 lmfit==0.9.11 progressbar2==3.38.0 \
-     nibabel shutil
-   ```
-
-   Anaconda will tell you if additional packages are necessary. We recommend installing AIDAmri in a separate Anaconda environment. Alternatively, use `requirements.txt` from the AIDAmri Git repository to install the dependencies. Open the terminal in the folder where the requirements file is located and run:
-
-   ```bash
-   pip install --upgrade pip && pip install -r requirements.txt
-   ```
-
-6. Install NiftyReg by conducting the following steps:
-
-   a. Generate your source folder:
-
-   ```text
-   .../NiftyReg/niftyreg_source
-   ```
-
-   b. Download NiftyReg from Git by replacing `<path>` with your personal path:
-
-   ```bash
-   git clone \
-     git://git.code.sf.net/p/niftyreg/git \
-     <path>/niftyreg_source
-   ```
-
-   c. Change into the folder:
-
-   ```bash
-   cd <path>/niftyreg_source
-   ```
-
-   d. Run:
-
-   ```bash
-   git reset --hard 83d8d1182ed4c227ce4764f1fdab3b1797eecd8d
-   ```
-
-   e. Follow the described NiftyReg installation steps.
+Here, `-w /aida/bin` sets the working directory inside the container to `/aida/bin`.
 
 ## Functions
 
-List of functions:
+List of functions and script groups:
 
-- `PV2NIfTiConverter`: Bruker to NIfTI converter.
-- `T2PreProcessing`: T2w MRI preprocessing including brain extraction, bias field correction and atlas registration.
-- `DTIPreprocessing`: DTI preprocessing including brain extraction, bias field correction and atlas registration.
-- `fMRIPreProcessing`: fMRI preprocessing including brain extraction, bias field correction and atlas registration.
-- `T2Processing`: stroke mask calculations across all subjects per group, incidence mapping and SNR calculations.
-- `DTIConnectivity`: whole-brain fiber tracking using DSI Studio and calculation of diffusion measures, FA, AD, RD and MD, for every brain region.
-- `DTIdata_extract`: creates a `.txt` file containing DTI values from all brain regions.
-- `fMRIActivity`: functional connectivity analysis for all atlas regions.
-- `T2mapPreProcessing`: T2 map preprocessing.
-- `ROI_analysis`: analysis of T2w, DTI and rs-fMRI with user-defined atlas regions, for example peri-infarct regions around the stroke lesion.
+- `conv2Nifti_auto.py`: batch conversion of raw Bruker ParaVision data to BIDS-like NIfTI output folders.
+- `PV2NIfTiConverter/`: ParaVision-to-NIfTI conversion scripts used by `conv2Nifti_auto.py`, including DTI sidecar generation for `.bval` and `.bvec` files.
+- `batchProc.py`: batch processing entry point for converted datasets. It runs the selected preprocessing, registration and processing steps for the requested data types and sessions.
+- `2.1_T2PreProcessing/`: T2w preprocessing, including reorientation, smoothing, bias-field correction, brain extraction and atlas registration.
+- `2.2_DTIPreProcessing/`: DTI preprocessing, including b0 averaging, motion correction, smoothing, bias-field correction, brain extraction and atlas registration.
+- `2.3_fMRIPreProcessing/`: rs-fMRI preprocessing, including slice-time correction, motion correction, smoothing and atlas registration.
+- `3.1_T2Processing/`: T2w analysis scripts for stroke mask statistics, incidence maps, incidence sizes and SNR calculations.
+- `3.2_DTIConnectivity/`: DTI reconstruction and whole-brain fiber tracking with DSI Studio, including connectivity matrix generation and matrix plotting.
+- `3.2.1_DTIdata_extract/`: extraction of region-wise DTI measures such as FA, AD, RD and MD from registered atlas regions, including iterative batch helpers.
+- `3.3_fMRIActivity/`: rs-fMRI activity and connectivity analysis, including seed ROI creation, regression tables, mean time-series extraction, correlation matrices and matrix plotting.
+- `4.1_T2mapPreProcessing/`: T2 map preprocessing, atlas registration and extraction of region-wise T2 map values.
+- `5.1_ROI_analysis/`: ROI-based analyses for user-defined regions, for example peri-infarct regions around stroke lesions, including mask dilation, transform application, seed ROI creation and ROI inspection.
+- `helper_tools/`: additional utilities for data preparation and quality control, including naming cleanup, batch reorientation, fieldmap JSON updates, stroke mask distribution, source-data plotting and atlas region size summaries.
+- `adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
 
 All program examples are listed only with the mandatory input parameters. For more details or help, call:
 
-```bash
+```text
 python <command> -h
 ```
 
@@ -349,11 +283,11 @@ After a successful download, you can choose either to process single files manua
 
 AIDAmri provides functions for data conversion and batch processing. Complete processing requires two scripts:
 
-1. `conv2Nifti_auto.py` creates a new project folder, converts all files to NIfTI format and stores them in the new project folder.
+1. `conv2Nifti_auto.py` Converts all files to NIfTI format and stores them in the new folder (proc folder).
 2. `batchProc.py` applies preprocessing steps and registration with the atlas.
 
 > [!NOTE]
-> If multiple reconstructions exist, conversion will only use the first folder correctly. The test data set is already converted into NIfTI format, so only the second script needs to be applied.
+> If multiple reconstructions exist, conversion will only use the first folder correctly. The test data set is already converted into NIfTI format (see nifti folder), so only the second script needs to be applied.
 
 In general, raw Bruker data must be in the following structure for the first script to work:
 
@@ -363,23 +297,22 @@ projectfolder/days/subjects/
 
 To convert the whole project folder into NIfTI format, open the terminal and change the directory to the `/bin` folder of the AIDAmri installation:
 
-```bash
+```text
 cd <path to AIDAmri>/bin
 ```
 
 Start Bruker to NIfTI conversion:
 
-```bash
+```text
 python conv2Nifti_auto.py -i /path/to/raw_dataset -o /path/to/output
 ```
 
-This script automatically finds all raw Bruker datasets saved within the input path. By default, the output is saved in:
+This script automatically finds all raw Bruker datasets saved within the input path. You can specify the output directory via the `-o` flag. Without the `-o` flag, the output is saved next to the input directory:
 
 ```text
-/path/to/raw_dataset/proc_data
+/path/to/proc_data
 ```
 
-You can specify the output directory via the `-o` flag.
 
 After successful Bruker to NIfTI conversion, the second script can be applied to the new project folder `proc_data`. The data need to be ordered in BIDS format like the output of `conv2Nifti_auto.py`:
 
@@ -392,27 +325,28 @@ projectfolder/sub-/ses-/datatype
 
 Example:
 
-```bash
+```text
 python batchProc.py -i /path/to/proc_data \
-  -t anat dwi func t2map -s Baseline P3 P12 -stc False
+  -t anat dwi func t2map -s Baseline P3 P12 --t2-bias-method mico
 ```
 
-This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`) and sessions (`-s`) to compute. You can also specify whether slice-time correction should be performed on the data. By default, the `-stc` flag is set to `False`, and it is optional to set this parameter.
+This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`) e.g anatomical or dwi and sessions (`-s`) to compute. You can also specify which bias method should be used on the data.
 
-You do not need to specify data types and sessions. If no `-t` and no `-s` flag are given, every data type and session of every subject will be processed.
+You do not need to specify data types and sessions or any other argument except the input argument. If no `-t` and no `-s` flag are given, every data type and session of every subject will be processed.
 
 > [!IMPORTANT]
-> The scripts executed by `batchProc.py` are related to each other. Therefore, `anat` always needs to be specified before `dwi`.
+> The scripts executed by `batchProc.py` are related to each other. Therefore, `anat` processing always needs to be performed before `dwi`.
 
 Depending on the size of your project, this process may take a while. After finishing, the project folder is ready for network graph analysis, for example using AIDAconnect.
 
-Further information can be accessed with:
+Please have a look into the help page of `batchProc.py` for more information on all the options which you can select:
 
-```bash
+```text
 python batchProc.py -h
 ```
 
 ## Processing single files step-by-step
+Every script has arguments that can be specified when calling the script. For more information on the arguments, every script has a help page which can be accessed by calling the script with the `-h` flag. The following sections provide examples of how to process single files step-by-step.
 
 ### Convert raw data
 
@@ -421,8 +355,8 @@ Convert Bruker raw data to NIfTI files by specifying the folder containing all r
 > [!NOTE]
 > If multiple reconstructions exist, conversion will only use the first folder correctly. A file with exactly the same name is created in the given input folder. It contains all sorted NIfTI files. The raw data should have the same orientation as the example dataset.
 
-```bash
-python pv_conv2Nifti.py -i .../testData
+```text
+python pv_conv2Nifti.py -i /aida/DATA/raw_data_folder
 ```
 
 Move the newly generated file to a new project folder if you want to separate raw Bruker files from processed NIfTI files. We recommend the following folder structure, especially if you want to use AIDAconnect for graph analysis:
@@ -431,41 +365,103 @@ Move the newly generated file to a new project folder if you want to separate ra
 projectfolder/days/groups/subjects/data/
 ```
 
-### Processing of T2w and T2mapping data
+### Processing of anatomical data
+> [!WARNING]
+> Before you process any data please visually inspect the NIFTIs to check for correct orientation and quality. For more information please see the "Data Format and Orientation Requirements" section in the [README](README.md).
 
-Apply reorientation, bias field correction and brain extraction to the T2w data set. The automatically attached endings of the processed filenames indicate which steps have been performed.
+Apply bias field correction and brain extraction to the anatomical data set. The automatically attached endings of the processed filenames indicate which steps have been performed.
 
-> [!IMPORTANT]
-> Brain extraction should be of good quality and must be manually checked or corrected by adapting the default parameter.
-
-```bash
-python preProcessing_T2.py -i .../testData/T2w/testData.5.1.nii.gz
-```
-
-The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted T2 dataset. Check the registration result, for example by superimposing the brain-extracted file with the atlas annotations, ending with `...Anno.nii.gz`.
-
-There is an option to segment an additional region of interest, such as the stroke lesion. You can segment the region using the brain-extracted dataset as reference, ending with `...BET.nii.gz`. We recommend conducting this step with ITK-SNAP. The saved file should end with:
 
 ```text
-...Stroke_mask.nii.gz
+python preProcessing_T2.py -i /aida/DATA/PATH/TO/anat/testData.5.1.nii.gz
 ```
+You can specify the bias correction method with the `-b` flag.  
+By default, AIDAmri uses `MICO`, which is well suited for small animal MRI data. Alternatively, you can use `ANTS`. The bias-corrected output file is saved with the ending `...Bias.nii.gz`.
+For brain extraction, several parameters can be adjusted. For example, the `-f` flag defines the fractional intensity threshold used by FSL's BET method. You can also specify parameters such as the brain radius or the horizontal gradient if you want to make the extraction stricter in the anterior or posterior direction.
+The default brain extraction method is FSL's `BET`, which was originally developed for human brain MRI but is used here in a modified way. As an alternative, AIDAmri also supports `bet4animal`, which is specifically designed for small animal brains, such as mouse or rat brains. `bet4animal` is often easier to use because parameters such as the fractional intensity threshold do not need to be selected manually.
+However, in practice, neither method is always superior. In some cases, the default `BET` method gives better results, while in other cases `bet4animal` works better. Therefore, we recommend testing both methods and visually checking the resulting brain extraction.
+The brain-extracted output file is saved with the ending `...BET.nii.gz`.
+
+### Registration of anatomical data
+The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted T2 dataset.  
+
+There is an option to segment an additional region of interest, such as the stroke lesion. You can segment the region using the brain-extracted dataset as reference, ending with `...BET.nii.gz`. We recommend conducting this step with ITK-SNAP. The saved file should end with: `...Stroke_mask.nii.gz`
 
 Run registration:
 
-```bash
-python registration_T2.py -i .../testData/T2w/testDataBiasBet.nii
+```text
+python registration_T2.py -i /aida/DATA/PATH/TO/anat/testDataBiasBet.nii
 ```
 
-To improve registration, try to optimize the brain extraction and generated mask, for example manually using ImageJ. Then run the registration again.
+For an input file called `<input>.nii.gz`, `registration_T2.py` creates the following output files in the same `anat` folder:
 
-If you previously defined a region of interest, such as a stroke lesion, it is possible to calculate the region size and segmented parental atlas regions. Here, the segmented region `.../Stroke_mask.nii.gz` is overlaid with the Allen Brain Reference Atlas and saved in the file `...Anno_mask.nii.gz`. Use the path to `.../T2w` as input.
-
-```bash
-python getIncidenceSize_par.py -i .../testData/T2w
-python getIncidenceSize.py -i .../testData/T2w
+```text
+<input>_TemplateAff.nii.gz
+<input>_Template.nii.gz
+<input>_TemplateAllen.nii.gz
+<input>MatrixAff.txt
+<input>MatrixInv.txt
+<input>MatrixBspline.nii
+<input>_Anno.nii.gz
+<input>_AnnoSplit.nii.gz
+<input>_Anno_parental.nii.gz
+<input>_AnnoSplit_parental.nii.gz
 ```
 
-The parental affected-region results from `getIncidenceSize_par.py` are stored in `.../anat/affected Regions`:
+- `<input>_TemplateAff.nii.gz`: MRI template (NP_template_sc0.nii.gz) after affine registration to the T2 image.
+- `<input>_Template.nii.gz`: MRI template (NP_template_sc0.nii.gz) after non-linear registration to the T2 image.
+- `<input>_TemplateAllen.nii.gz`: Allen Brain Reference Template registered to the T2 image.
+- `<input>MatrixAff.txt`: affine transformation matrix from template space to T2 space.
+- `<input>MatrixInv.txt`: inverse affine transformation matrix from T2 space to Allen template space.
+- `<input>MatrixBspline.nii`: non-linear B-spline transformation field.
+- `<input>_Anno.nii.gz`: registered detailed Allen atlas annotation in T2 space.
+- `<input>_AnnoSplit.nii.gz`: registered detailed Allen atlas annotation in T2 space with separated left and right hemispheres.
+- `<input>_Anno_parental.nii.gz`: registered parental atlas annotation in T2 space with larger brain regions.
+- `<input>_AnnoSplit_parental.nii.gz`: registered parental atlas annotation in T2 space with separated left and right hemispheres.
+
+Check the registration result visually, for example by overlaying the brain-extracted image with the registered atlas annotation file. The annotation file usually ends with `...Anno.nii.gz`.
+If the registration result is not satisfactory, try to improve the brain extraction first. For example, you can adjust the brain extraction parameters or manually correct the generated brain mask using tools such as ImageJ. After improving the mask, run the registration again.
+
+The script also creates an `IncidenceData` subfolder:
+
+```text
+IncidenceData/<input>_IncidenceData.nii.gz
+IncidenceData/<input>_IncidenceData_Lesion_mask.nii.gz
+```
+
+- `<input>_IncidenceData.nii.gz`: T2 image registered into Allen template space, used for incidence-map processing.
+- `<input>_IncidenceData_Lesion_mask.nii.gz`: stroke or lesion mask registered into Allen template space. This file is only created if a matching `*Stroke_mask.nii.gz` file exists in the same folder.
+
+### Processing of anatomical data
+If you previously defined a region of interest, such as a stroke lesion, you can calculate the ROI size and determine which atlas regions overlap with it. In this step, the segmented ROI file, for example `...Stroke_mask.nii.gz`, is overlaid with the registered atlas annotation.
+
+Two atlas variants can be evaluated:
+
+- `getIncidenceSize.py` uses the regular left/right-separated ARA atlas `ARA_annotationR+2000.nii.gz` and the subject-space annotation file `*_AnnoSplit.nii.gz`.
+- `getIncidenceSize_par.py` uses the parental atlas `annoVolume+2000_rsfMRI.nii.gz` and the subject-space annotation file `*_AnnoSplit_parental.nii.gz`.
+
+Both scripts expect the corresponding `.../anat` folder as input. The folder must contain exactly one stroke mask, one BET image, one matching annotation file and one `IncidenceData_Lesion_mask.nii.gz` file.
+
+```text
+python getIncidenceSize.py -i .../testData/anat
+python getIncidenceSize_par.py -i .../testData/anat
+```
+
+The non-parental affected-region results from `getIncidenceSize.py` are stored in `.../anat/affected_Regions`:
+
+```text
+*affectedRegions.csv
+*affectedRegions.nii.gz
+*labelCount.mat
+```
+
+The labelled non-parental incidence lesion mask is stored in `.../anat/IncidenceData`:
+
+```text
+*IncidenceData_Anno_lesion_mask.nii.gz
+```
+
+The parental affected-region results from `getIncidenceSize_par.py` are stored in `.../anat/affected_Regions`:
 
 ```text
 *affectedRegions_Parental.csv
@@ -479,25 +475,17 @@ The labelled parental incidence lesion mask is stored in `.../anat/IncidenceData
 *IncidenceData_Anno_parental_lesion_mask.nii.gz
 ```
 
-The non-parental results from `getIncidenceSize.py` are stored directly in `.../anat`:
-
-```text
-affectedRegions.nii.gz
-affectedRegions.txt
-labelCount.mat
-```
-
 ### Processing of ROI stroke mask data
 
 From masks drawn on the T2-weighted images, it is possible to determine both the incidence map and the size of affected regions. For example, if a `day1` folder contains multiple `Mouse 1` to `Mouse 15` folders and the processed T2 data are in those folders, the command would be:
 
-```bash
+```text
 python getIncidenceMap.py -i .../day1 -s "Mouse*"
 ```
 
 It is also possible to determine the region size as voxels and volume in mm³:
 
-```bash
+```text
 python getRegionSize_par.py -i .../T2w
 ```
 
@@ -505,7 +493,7 @@ python getRegionSize_par.py -i .../T2w
 
 The DTI processing procedure includes dimension reduction, bias correction, threshold application and subsequent brain extraction. The endings on the filenames indicate which steps have been performed.
 
-```bash
+```text
 python preProcessing_DTI.py -i .../DTI/testData.7.1.nii.gz
 ```
 
@@ -514,13 +502,13 @@ The next step includes registration of the Allen Brain Reference Atlas with the 
 1. Registration of a reference mask that is related to another dataset or day, for example to always use the same mask. Append `-r <filename of ref>`.
 2. Otherwise, the algorithm automatically uses the corresponding reference mask from the respective subject folder. If no mask is defined, the registration proceeds without a mask.
 
-```bash
+```text
 python registration_DTI.py -i .../DTI/testDataSmoothMicoBet.nii.gz
 ```
 
 Connectivity is finally calculated using DSI Studio. All connectivity matrices are based on the reference atlas.
 
-```bash
+```text
 python dsi_main.py -i .../DTI/testData.7.1.nii.gz
 ```
 
@@ -528,13 +516,13 @@ The connectivity matrices of the parental ARA, the original ARA and the related 
 
 The adjacency matrices can be visualized using the related plot function:
 
-```bash
+```text
 python plotDTI_mat.py -i .../testData/DTI/connectivity/testData*.connectivity.mat
 ```
 
 The folder `.../DTI/DSI_studio` also contains diffusion value maps, for example FA maps, registered with the atlas. This data can be extracted and saved as `.txt` with the region name and corresponding FA, RD, MD and AD values using:
 
-```bash
+```text
 python DTIdata_extract.py image_file roi_file
 ```
 
@@ -547,19 +535,19 @@ The fMRI processing is roughly comparable to preprocessing of DTI datasets.
 > [!IMPORTANT]
 > Brain extraction should be of good quality and must be manually checked or corrected by adapting the given parameters.
 
-```bash
+```text
 preProcessing_fMRI.py -i .../fMRI/testData.6.1.nii.gz
 ```
 
 The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted fMRI dataset. The result is a variety of files. An impression of the registration can be obtained by superimposing the brain-extracted file with the annotations of the Allen Brain, ending with `...Anno.nii.gz`.
 
-```bash
+```text
 python registration_fMRI.py -i .../testData/fMRI/testSmoothBet.nii
 ```
 
 If physiological data are not available, the step will be conducted without the included regression. All activity matrices are based on the reference atlas.
 
-```bash
+```text
 python process_fMRI -i .../fMRI/testData.6.1.nii.gz
 ```
 
@@ -567,7 +555,7 @@ The activity matrices of the parental Atlas and original Atlas are stored in the
 
 The related adjacency matrices can be visualized using the related plot function:
 
-```bash
+```text
 python plotfMRI_mat.py -i .../testData/fMRI/regr/MasksTCsSplit*.mat
 ```
 
@@ -598,13 +586,13 @@ Proceed with the scripts in order from 1 to 4.
 
 The first script creates peri-infarct masks for all time points:
 
-```bash
+```text
 python 01_dilate_mask_process.py
 ```
 
 The second script aligns the peri-infarct masks in the rs-fMRI and DTI space:
 
-```bash
+```text
 python 02_apply_xfm_process.py
 ```
 
@@ -615,13 +603,13 @@ The result of the third script depends on the imaging type:
   2. The atlas label names.
 - For DTI, a modified atlas labels file is created which includes individually shaped peri-infarct brain regions. These newly generated regions replace the original regions in the file.
 
-```bash
+```text
 python 03_create_seed_rois_process.py
 ```
 
 The fourth script is not mandatory, but is a helper tool to compare the number of voxels included in the peri-infarct region for each subject.
 
-```bash
+```text
 python 04_examine_rois.py
 ```
 
