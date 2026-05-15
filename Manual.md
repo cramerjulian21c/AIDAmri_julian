@@ -419,7 +419,7 @@ For an input file called `<input>.nii.gz`, `registration_T2.py` creates the foll
 - `<input>_Anno_parental.nii.gz`: registered parental atlas annotation in T2 space with larger brain regions.
 - `<input>_AnnoSplit_parental.nii.gz`: registered parental atlas annotation in T2 space with separated left and right hemispheres.
 
-Check the registration result visually, for example by overlaying the brain-extracted image with the registered atlas annotation file. The annotation file usually ends with `...Anno.nii.gz`.
+Check the registration result visually, for example by overlaying the brain-extracted image with the registered atlas annotation file.
 If the registration result is not satisfactory, try to improve the brain extraction first. For example, you can adjust the brain extraction parameters or manually correct the generated brain mask using tools such as ImageJ. After improving the mask, run the registration again.
 
 The script also creates an `IncidenceData` subfolder:
