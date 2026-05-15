@@ -6,10 +6,12 @@
 
 <h1>AIDA<i>mri</i></h1>
 
-<img align="left" src="https://github.com/maswendt/AIDAmri/blob/master/AIDA_Logo.png" width="120">
+<img align="left" src="AIDA_Logo.png" width="120">
 Atlas-based Imaging Data Analysis Pipeline (AIDA) for structural and functional MRI of the mouse brain
 <br/>
-[**Manual**](Manual.md)
+<br/>
+Please read this README completely before using AIDAmri. Here you will find the detailed user <a href="./Manual.md"><strong>manual</strong></a>.
+<br clear="left"/>
 
 ## Key Features of AIDA<em>mri</em>
 
@@ -29,7 +31,7 @@ Atlas-based Imaging Data Analysis Pipeline (AIDA) for structural and functional 
    The output of the pipeline includes connectivity matrices that can be used for further analysis of brain network changes in health and disease.
 
 <p align="center">
-  <img src="https://github.com/maswendt/AIDAmri/blob/master/AIDAmri_drawing.png" style="max-width: 100%; height: auto;">
+  <img src="AIDAmri_drawing.png" style="max-width: 100%; height: auto;">
 </p>
 
 Pipeline overview from [Pallast et al.](https://doi.org/10.3389/fninf.2019.00042)
@@ -79,7 +81,7 @@ all input data for preprocessing must be in <ins>**LIP (Left-Inferior-Posterior)
 Furthermore, the image header information must be consistent with the physical orientation of the data array. 
 Any mismatch between the header orientation and the actual voxel layout can lead to registration errors or incorrect alignment with the atlas. It is therefore strongly recommended to verify and, if necessary, correct the header orientation. 
 Please use FSL eyes for visual inspection and fslhd for checking the header information. FSL is already installed inside AIDAmri. More Information about FSL can be find [here](https://fsl.fmrib.ox.ac.uk/fsl/docs/).
-If your data is in a different orientation than LIP please use our ReorientBatch.py script in the [helpertools](bin/helper_tools) folder. The script should be used **after** convert2Nifti script and can reorient the whole proc_data folder. 
+If your data is in a different orientation than LIP please use our ReorientBatch.py script in the [helpertools](bin/helper_tools) folder. The script should be used **after** convert2Nifti script and **before** procesing any files.  ReorientBatch.py can reorient the whole proc_data folder. 
 It is important that the folder contains only the NIFTI files to be reoriented. The folder must not contain any NIFTI files that have already been processed. 
 Furthermore, please note that after reorientation, tools such as Fiji or other tools that do not read the header of a NIFTI file will display the images only as the data was saved after reorientation. 
 For this reason, we recommend FSL Eyes, as this tool provides more information about the orientation. 
