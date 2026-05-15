@@ -4,11 +4,13 @@
 [1]: http://www.twitter.com/AswendtMarkus
 <!--social icon from https://github.com/carlsednaoui/gitsocial -->
 
-<img align="left" src="https://github.com/maswendt/AIDAmri/blob/master/AIDA_Logo.png" width="120">
 <h1>AIDA<i>mri</i></h1>
 
+<img align="left" src="https://github.com/maswendt/AIDAmri/blob/master/AIDA_Logo.png" width="120">
 Atlas-based Imaging Data Analysis Pipeline (AIDA) for structural and functional MRI of the mouse brain
 <br/>
+[**Manual**](Manual.md)
+
 ## Key Features of AIDA<em>mri</em>
 
 1. **Automated Preprocessing**  
@@ -38,8 +40,6 @@ Pipeline overview from [Pallast et al.](https://doi.org/10.3389/fninf.2019.00042
 
 [Information latest Version 2.0](https://github.com/maswendt/AIDAmri/releases/tag/v2.0)
 
-[**Manual**](https://github.com/maswendt/AIDA/blob/master/manual.pdf)
-
 [Information about Version 1.2 (Docker stable release)](https://github.com/maswendt/AIDAmri/releases/tag/v1.2)
 <br/>
 [Information about Version 1.1.1 (Docker pre-release)](https://github.com/maswendt/AIDAmri/releases/tag/1.1.1)
@@ -48,9 +48,6 @@ Pipeline overview from [Pallast et al.](https://doi.org/10.3389/fninf.2019.00042
 <br/>
 [Information about Version 1.0](https://github.com/maswendt/AIDAmri/releases/tag/v1.0)
 
-<h3><b>Important note: read this before you install AIDAmri for the first time</h3></b>
-
-We fully moved to the containerized version of AIDAmri via [Docker](https://docs.docker.com/get-docker/). All information can be found in the manual above. Please report issues and bugs directly in the issue section of this repository or at gitter (Link below in the contact section).
 
 ## BRANCHES
 
@@ -59,9 +56,13 @@ AIDAmri is organized into multiple branches to support development, collaboratio
 - **`main`** – the stable branch containing officially released and validated versions of AIDAmri for mice.  
 - **`open-dev`** – the public development branch that can be used by external contributors to implement code modifications, enhancements, or bug fixes.  
   *Researchers and developers are welcome to fork the repository, work within the `open-dev` branch, and submit pull requests for review.*  
-- **`rat`** – a dedicated branch for rat MRI data, including modified atlas and template versions optimized for rat brain imaging and analysis.  
+- **`rat`** – a dedicated branch for rat MRI data, including modified atlas and template versions optimized for rat brain imaging and analysis. **Note: that this branch is based on AIDAmri version 2.**
 
 Each branch is continuously synchronized to ensure compatibility with the core AIDAmri framework and Docker-based environment.
+Use git switch to change between branches:
+```
+git switch rat
+```
 
 ## EXAMPLE FILES
 
@@ -78,7 +79,7 @@ all input data for preprocessing must be in <ins>**LIP (Left-Inferior-Posterior)
 Furthermore, the image header information must be consistent with the physical orientation of the data array. 
 Any mismatch between the header orientation and the actual voxel layout can lead to registration errors or incorrect alignment with the atlas. It is therefore strongly recommended to verify and, if necessary, correct the header orientation. 
 Please use FSL eyes for visual inspection and fslhd for checking the header information. FSL is already installed inside AIDAmri. More Information about FSL can be find [here](https://fsl.fmrib.ox.ac.uk/fsl/docs/).
-If your data is in a different orientation than LIP please use our ReorientBatch.py script in the helpertools folder. The script should be used after convert2Nifti script and can reorient the whole proc_data folder. 
+If your data is in a different orientation than LIP please use our ReorientBatch.py script in the [helpertools](bin/helper_tools) folder. The script should be used **after** convert2Nifti script and can reorient the whole proc_data folder. 
 It is important that the folder contains only the NIFTI files to be reoriented. The folder must not contain any NIFTI files that have already been processed. 
 Furthermore, please note that after reorientation, tools such as Fiji or other tools that do not read the header of a NIFTI file will display the images only as the data was saved after reorientation. 
 For this reason, we recommend FSL Eyes, as this tool provides more information about the orientation. 
@@ -229,9 +230,9 @@ fslhd input.nii.gz
 
 
 ## ARA CREATOR
-[Matlab script](https://github.com/maswendt/AIDAmri/ARA) to generate a custom version of the Allen Mouse Brain Atlas.
+[Matlab script](ARA/) to generate a custom version of the Allen Mouse Brain Atlas.
 
-[<h3><b>CONTACT</h3></b>]
+## CONTACT
 If you encounter problems, report directly in [![Gitter](https://badges.gitter.im/AIDA_tools/community.svg)](https://gitter.im/AIDA_tools/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 or 
@@ -241,7 +242,7 @@ join our Open Office Hour - each Thursday 3:00 pm (UTC+2) [![Zoom](https://img.s
 
 For all other inquiries: Markus Aswendt (aswendtATmed.uni-frankfurt.de)
 
-<h3><b>LICENSE/CITATION</h3></b>
+## LICENSE/CITATION
 GNU General Public License v3.0
 <br/>
 <br/>
