@@ -9,10 +9,10 @@ This script automates the conversion from the raw bruker data format to the NIfT
 format for the whole dataset using brkraw. The raw
 data needs to be stored in one folder.
 All the data which is contained in the input folder will be converted to nifti. During the processing a new folder called proc_data is being
-created in the same directory where the raw data folder is located. If you wish to save the output elsewhere you can specify the output directory with the -o flag when starting the script.
+created next to the raw data folder. If you wish to save the output elsewhere you can specify the output directory with the -o flag when starting the script.
 
 Example:
-python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data -o /Volumes/Desktop/MRI//proc_data
+python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data
 """
 
 import os
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     import argparse
     from adjustbvecRep import adjust_bvec_rep
 
-    parser = argparse.ArgumentParser(description='This script automates the conversion from the raw bruker data format to the NIfTI format using 1_PV2NIfTiConverter/pv_conv2Nifti.py. The raw data needs to be in the following structure: projectfolder/days/subjects/data/. For this script to work, the groupMapping.csv needs to be adjusted, where the group name of every subject''s folder in the raw data structure needs to be specified. This script computes the converison either for all data in the raw project folder or for certain days and/or groups specified through the optional arguments -d and -g. During the processing a new folder called proc_data is being created in the same directory where the raw data folder is located. Example: python conv2Nifti_auto.py -f /Volumes/Desktop/MRI/raw_data -d Baseline P1 P7 P14 P28')
+    parser = argparse.ArgumentParser(description='This script automates the conversion from the raw bruker data format to the NIfTI format using 1_PV2NIfTiConverter/pv_conv2Nifti.py. The raw data needs to be in the following structure: projectfolder/days/subjects/data/. For this script to work, the groupMapping.csv needs to be adjusted, where the group name of every subject''s folder in the raw data structure needs to be specified. This script computes the conversion either for all data in the raw project folder or for certain days and/or groups specified through the optional arguments -s. During the processing a new folder called proc_data is created next to the raw data folder unless an output directory is specified with -o. Example: python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data -s Baseline P1 P7 P14 P28')
     parser.add_argument('-i', '--input', required=True,
                         help='Path to the parent project folder of the dataset, e.g. raw_data, WARNING:  all of the raw subjects have to be in one folder and not to have a subfolder structure. otherwise the conversion to bids wont work.', type=str)                 
     parser.add_argument('-s', '--sessions',
@@ -346,7 +346,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pathToRawData = args.input
     if args.output == None:
-        output_dir = os.path.join(pathToRawData, "proc_data")
+        output_dir = str(Path(pathToRawData).expanduser().resolve().parent / "proc_data")
     else:
         output_dir = args.output
 
@@ -516,4 +516,3 @@ if __name__ == "__main__":
     print("###")
     print("Thank you for using AIDAmri!")
   
-
