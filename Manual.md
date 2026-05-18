@@ -233,18 +233,18 @@ As a first test, change into the `bin/` folder and open the help page of the bat
 
 ```text
 cd bin/
-python batchProg.py -h
+python batchProc.py -h
 ```
 
 If the help page is displayed, the container is working and AIDAmri can be used.
 
 Alternatively, you can use `docker exec` to run a command inside the container without entering the container shell.
 
-For example, to open the help page of `batchProg.py`, run:
+For example, to open the help page of `batchProc.py`, run:
 
 ```text
 docker exec -w /aida/bin aidamri-container \
-  python batchProg.py -h
+  python batchProc.py -h
 ```
 
 Here, `-w /aida/bin` sets the working directory inside the container to `/aida/bin`.
@@ -315,6 +315,8 @@ This script automatically finds all raw Bruker datasets saved within the input p
 /path/to/proc_data
 ```
 
+> [!NOTE]
+> If any generated folder or file names contain a 'underscore', please run the `reset_naming.py` script located in the `helper_tools` directory.
 
 After successful Bruker to NIfTI conversion, the second script can be applied to the new project folder `proc_data`. The data need to be ordered in BIDS format like the output of `conv2Nifti_auto.py`:
 
@@ -323,7 +325,7 @@ projectfolder/sub-/ses-/datatype
 ```
 
 > [!WARNING]
-> Batch processing may slow down the system depending on the CPU load-out. Use the `-cpu` or `-e cpu` flag to specify CPU usage. Run `python batchProg.py -h` for more information.
+> Batch processing may slow down the system depending on the CPU load-out. Use the `-c` or `-e` flag to specify CPU usage. Run `python batchProc.py -h` for more information.
 
 Example:
 
@@ -367,7 +369,7 @@ Move the newly generated file to a new project folder if you want to separate ra
 projectfolder/days/groups/subjects/data/
 ```
 
-### Processing of anatomical data
+### Preprocessing of anatomical data
 > [!WARNING]
 > Before you process any data please visually inspect the NIFTIs to check for correct orientation and quality. For more information please see the "Data Format and Orientation Requirements" section in the [README](README.md).
 
@@ -479,88 +481,142 @@ The script `getIncidenceMap.py` combines registered lesion masks from multiple s
 python getIncidenceMap.py -i .../proc_data --session session_name
 ```
 
-This creates an incidence image showing how many subjects overlap at each voxel, together with heatmap output files. The input folder should be a parent folder that contains the processed subject folders.
+This creates an incidence image showing how many subjects overlap at each voxel. The input folder should be a parent folder that contains the processed subject folders.
+
+### Preprocessing of DTI data
+DTI processing should be performed after the anatomical `anat` data of the same subject and session have already been preprocessed and registered. The DTI registration uses the processed T2/anatomical data, the registered atlas annotations and the T2 transformation files as reference.
+The DTI preprocessing step prepares the diffusion data for registration and tractography. It can apply denoising, optional b0 averaging, smoothing, bias-field correction and brain extraction. The endings on the generated filenames indicate which steps have been performed.
+
+```text
+python preProcessing_DTI.py -i .../dwi/testData_dwi.nii.gz
+```
+
+Several preprocessing options can be adjusted, for example the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Brain extraction can also be skipped with `--bet_skip`, in which case compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
+
+### Registration of DTI data
+The next step registers the atlas information from the anatomical T2 space into the DTI space. The script expects a brain-extracted DTI file, usually ending in `*Smooth*Bet.nii.gz`, and automatically searches the corresponding `anat` folder of the same subject/session for the T2 reference data.
+
+```text
+python registration_DTI.py -i .../dwi/testDataSmoothMicoBet.nii.gz
+```
+
+If a stroke mask is present in the corresponding `anat` folder, it is used automatically. To use a reference stroke mask from another session or day, use `-r`, for example:
+
+```text
+python registration_DTI.py -i .../dwi/testDataSmoothMicoBet.nii.gz -r ses-PT3
+```
+
+The DTI registration creates DTI-space atlas files, like in the T2 registration step, such as:
+
+```text
+*_AnnoSplit.nii.gz
+*_AnnoSplit_parental.nii.gz
+*_AnnoSplit.txt
+*_AnnoSplit_parental.txt
+```
+
+The NIfTI files are used as seed or ROI images for DSI Studio. The `.txt` files contain the corresponding atlas labels.
+Connectivity is calculated with DSI Studio:
+
 
 ### Processing of DTI data
-
-The DTI processing procedure includes dimension reduction, bias correction, threshold application and subsequent brain extraction. The endings on the filenames indicate which steps have been performed.
-
 ```text
-python preProcessing_DTI.py -i .../DTI/testData.7.1.nii.gz
+python dsi_main.py -i .../dwi/testData_dwi.nii.gz
 ```
 
-The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted DTI dataset. For processing a reference stroke mask, two options are available:
-
-1. Registration of a reference mask that is related to another dataset or day, for example to always use the same mask. Append `-r <filename of ref>`.
-2. Otherwise, the algorithm automatically uses the corresponding reference mask from the respective subject folder. If no mask is defined, the registration proceeds without a mask.
-
-```text
-python registration_DTI.py -i .../DTI/testDataSmoothMicoBet.nii.gz
-```
-
-Connectivity is finally calculated using DSI Studio. All connectivity matrices are based on the reference atlas.
+By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread_count`).
+The output is stored in the DTI folder. Diffusion metric maps such as FA, AD, RD and MD are stored in `.../dwi/DSI_studio`
+Connectivity matrices are stored as `.txt` and `.mat` files in `.../dwi/connectivity
+DSI Studio creates matrices for different connectivity definitions, for example fibers passing through a region and fibers ending in a region.
+The connectivity matrices can be visualized with:
 
 ```text
-python dsi_main.py -i .../DTI/testData.7.1.nii.gz
+python plotDTI_mat.py -i .../dwi/connectivity/*.connectivity.mat
 ```
 
-The connectivity matrices of the parental ARA, the original ARA and the related ROI are stored in the folder `.../DTI/connectivity` as `.txt` and `.mat` files. DSI Studio differentiates between matrices that count how many fibers pass through and end in each region.
-
-The adjacency matrices can be visualized using the related plot function:
+Region-wise diffusion values can be extracted from a DSI Studio metric map and a registered atlas ROI image using:
 
 ```text
-python plotDTI_mat.py -i .../testData/DTI/connectivity/testData*.connectivity.mat
+python DTIdata_extract.py .../dwi/DSI_studio/<metric>.nii.gz .../dwi/<roi_file>.nii.gz
 ```
 
-The folder `.../DTI/DSI_studio` also contains diffusion value maps, for example FA maps, registered with the atlas. This data can be extracted and saved as `.txt` with the region name and corresponding FA, RD, MD and AD values using:
+Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `iterativeRun.py` helper.
+
+### Preprocessing of fMRI data
+rs-fMRI processing should be performed after the anatomical `anat` data of the same subject and session have already been preprocessed and registered. The fMRI registration uses the processed T2/anatomical data, the registered atlas annotations and the T2 transformation files as reference. If DTI data are available and provide better alignment, the fMRI registration can optionally use DTI as an intermediate reference.
+The preprocessing step expects an EPI NIfTI file and performs the basic preparation of the rs-fMRI data, including generation of a brain-extracted image. Brain extraction quality should be visually checked and can be adjusted with the BET parameters `-f`, `-r` and `-g`.
 
 ```text
-python DTIdata_extract.py image_file roi_file
+python preProcessing_fMRI.py -i .../func/testData_EPI.nii.gz
 ```
 
-Use this command in the `3.2.1 DTIdata_extract` folder. To iteratively process all subjects, use the `iterativeRun.py` function.
+### Registration of fMRI data
+The next step registers the atlas information from anatomical T2 space into fMRI space. The script expects the preprocessed brain-extracted fMRI file, usually ending in `*SmoothBet.nii.gz`, and automatically searches the corresponding `anat` folder of the same subject/session for the T2 reference data.
+
+```text
+python registration_rsfMRI.py -i .../func/testDataSmoothBet.nii.gz
+```
+
+If DTI should be used as reference, add `-d`:
+
+```text
+python registration_rsfMRI.py -i .../func/testDataSmoothBet.nii.gz -d
+```
+
+If a stroke mask is present in the corresponding `anat` folder, it is used automatically. To use a reference stroke mask from another session or day, use `-r`.
+
+The fMRI registration creates fMRI-space atlas files such as:
+
+```text
+*_Anno.nii.gz
+*_AnnoSplit.nii.gz
+*_AnnoSplit_parental.nii.gz
+*_Anno_rsfMRI.nii.gz
+*_Template.nii.gz
+```
+
+Check the registration visually by overlaying the brain-extracted fMRI image with the registered annotation file, for example `*_AnnoSplit_parental.nii.gz`.
 
 ### Processing of fMRI data
-
-The fMRI processing is roughly comparable to preprocessing of DTI datasets.
-
-> [!IMPORTANT]
-> Brain extraction should be of good quality and must be manually checked or corrected by adapting the given parameters.
+The activity processing step performs regression, filtering and extraction of regional time series from the registered atlas regions. If physiological recording files or slice timing information are not available, the script proceeds without those correction steps.
 
 ```text
-preProcessing_fMRI.py -i .../fMRI/testData.6.1.nii.gz
+python process_fMRI.py -i .../func/testData_EPI.nii.gz
 ```
 
-The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted fMRI dataset. The result is a variety of files. An impression of the registration can be obtained by superimposing the brain-extracted file with the annotations of the Allen Brain, ending with `...Anno.nii.gz`.
+Slice time correction can be controlled with `-stc`, and parameters such as TR, high-pass filter cutoff and smoothing can be adjusted with `-t`, `-c` and `-f`.
+The resulting time-series and activity matrices are stored in `.../func/regr`.
+The files with prefix `MasksTCs.` refer to the non-parental atlas, and files with prefix `MasksTCsSplit.` refer to the split atlas variant used for region-wise activity analysis.
+The related matrices can be visualized with:
 
 ```text
-python registration_fMRI.py -i .../testData/fMRI/testSmoothBet.nii
-```
-
-If physiological data are not available, the step will be conducted without the included regression. All activity matrices are based on the reference atlas.
-
-```text
-python process_fMRI -i .../fMRI/testData.6.1.nii.gz
-```
-
-The activity matrices of the parental Atlas and original Atlas are stored in the folder `.../fMRI/regr` as `.txt` and `.mat` files with the prefixes `MasksTCs.` and `MasksTCsSplit.`.
-
-The related adjacency matrices can be visualized using the related plot function:
-
-```text
-python plotfMRI_mat.py -i .../testData/fMRI/regr/MasksTCsSplit*.mat
+python plotfMRI_mat.py -i .../func/regr/MasksTCsSplit*.mat
 ```
 
 ### Peri-infarct ROI analysis
 
-You can create custom peri-infarct masks to further analyze stroke-related regions. Go to the folder:
+The peri-infarct ROI workflow creates custom regions around a stroke lesion and applies them to rs-fMRI and DTI analyses. It is a configuration-based workflow and should be run only after the anatomical, DTI and/or rs-fMRI data have already been processed and registered.
+Go to the ROI analysis folder:
 
 ```text
-bin/4.1 ROI analysis
+bin/5.1_ROI_analysis
 ```
 
-Open `proc_tools.py` with an editor that can open Python files. Adjust all directories, paths and further specifications as described in the script.
+Before running the scripts, open `proc_tools.py` and adjust the project-specific settings. At minimum, check the following entries:
 
+```text
+lib_in_dir
+proc_in_dir
+proc_out_dir
+raw_in_dir
+timepoints
+groups
+study
+expno_*
+procno_*
+```
+
+These values define where the atlas files, processed data and raw ParaVision folders are located, which sessions/time points and groups should be processed, and which scan numbers belong to each subject.
 To decide which regions to include in the peri-infarct region, modify:
 
 ```text
@@ -571,35 +627,32 @@ cortex_labels_2.txt
 For the full list of atlas labels, see:
 
 ```text
-../lib/annoVolume+2000_rsfMRI.nii.txt
+lib/annoVolume+2000_rsfMRI.nii.txt
 ```
 
-Proceed with the scripts in order from 1 to 4.
-
-The first script creates peri-infarct masks for all time points:
+Proceed with the scripts in order.
+The first script creates peri-infarct masks in T2/anatomical space. It starts from the stroke mask, dilates it and subtracts the original stroke mask so that the result represents the peri-infarct rim. The generated masks are written to the processed T2/anatomical output folders configured in `proc_tools.py`.
 
 ```text
 python 01_dilate_mask_process.py
 ```
 
-The second script aligns the peri-infarct masks in the rs-fMRI and DTI space:
+The second script transforms the peri-infarct masks from T2/anatomical space into rs-fMRI and DTI space. It uses ParaVision geometry information and the processed data paths configured in `proc_tools.py`.
 
 ```text
 python 02_apply_xfm_process.py
 ```
 
-The result of the third script depends on the imaging type:
+The third script creates modified seed or ROI files that include the individually shaped peri-infarct regions:
 
-- For rs-fMRI, a MATLAB file is created which contains two text files:
-  1. For each region, one column with the averaged rs-fMRI time series.
-  2. The atlas label names.
-- For DTI, a modified atlas labels file is created which includes individually shaped peri-infarct brain regions. These newly generated regions replace the original regions in the file.
+- For rs-fMRI, it creates modified ROI stacks and extracts averaged regional time series. The resulting text and MATLAB files are stored in the `regr` folder.
+- For DTI, it creates modified atlas label files in which selected cortical regions are replaced by the peri-infarct ROIs. These files can be used as DSI Studio seed or ROI images.
 
 ```text
 python 03_create_seed_rois_process.py
 ```
 
-The fourth script is not mandatory, but is a helper tool to compare the number of voxels included in the peri-infarct region for each subject.
+The fourth script is optional. It compares the number of voxels included in the peri-infarct ROIs for each subject and is useful as a quality-control step.
 
 ```text
 python 04_examine_rois.py
