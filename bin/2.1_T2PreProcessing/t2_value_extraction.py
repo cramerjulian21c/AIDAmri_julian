@@ -8,7 +8,12 @@ import sys  # Added import statement for sys module
 
 def getOutfile(atlas_type, img_file, suffix):
     imgName = os.path.basename(img_file)
-    t2map = str.split(imgName, '.')[-3]
+    if imgName.endswith(".nii.gz"):
+        t2map = imgName[:-7]
+    elif imgName.endswith(".nii"):
+        t2map = imgName[:-4]
+    else:
+        t2map = os.path.splitext(imgName)[0]
     acronym_name = os.path.basename(atlas_type).split('.')[0]
     outFile = os.path.join(os.path.dirname(img_file),"t2_values_extraction",f"{t2map}_T2values_{acronym_name}_{suffix}.csv")
     return outFile
@@ -17,14 +22,14 @@ def extractT2MapdataMean(img, rois, outfile, txt_file):
     slices = np.unique(np.where(rois > 0)[2])
     regions = np.delete(np.unique(rois), 0)
     
-    indices = None
+    indices = {}
     if txt_file is not None:
         ref_lines = open(txt_file).readlines()
         indices = {int(line.split('\t')[0]): line.split('\t')[1].strip() for line in ref_lines}
     
     with open(outfile, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(["Slice", "ARA IDs", "Names", "T2 Values", "Region Sizes"])
+        csv_writer.writerow(["Slice", "ARA IDs", "Names", "Mean T2 Values", "Region Sizes"])
         
         for s in slices:
             for r in regions:
@@ -39,14 +44,14 @@ def extractT2MapdataMean(img, rois, outfile, txt_file):
 def extractT2MapdataPerRegion(img, rois, outfile, txt_file):
     regions = np.delete(np.unique(rois), 0)
     
-    indices = None
+    indices = {}
     if txt_file is not None:
         ref_lines = open(txt_file).readlines()
         indices = {int(line.split('\t')[0]): line.split('\t')[1].strip() for line in ref_lines}
     
     with open(outfile, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(["ARA IDs", "Names", "T2 Values", "Region Sizes"])
+        csv_writer.writerow(["ARA IDs", "Names", "Mean T2 Values", "Region Sizes"])
         
         for r in regions:
             region_voxels = np.where((rois == r) & (rois > 0))
@@ -63,9 +68,12 @@ if __name__ == '__main__':
     requiredNamed.add_argument('-i', '--input', help='Input T2w file, should be a nifti file')
     args = parser.parse_args()
 
-    acronyms_files = glob.glob(os.path.join(os.getcwd(), "*.txt"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    acronyms_files = sorted(glob.glob(os.path.join(script_dir, "*.txt")))
     print(f"Extracting T2 values for: {args.input}")
     print(f"Acronym files: {acronyms_files}")
+    if len(acronyms_files) == 0:
+        sys.exit(f"Error: No acronym text files '*.txt' found in '{script_dir}'.")
 
     # Checking if input file is provided
     if args.input is None:
@@ -78,8 +86,17 @@ if __name__ == '__main__':
     img_data = nii.load(image_file)
     img = img_data.get_fdata()  # Using get_fdata() for compatibility
     
-    parental_atlas = glob.glob(os.path.join(os.path.dirname(image_file), "*AnnoSplit_parental.nii*"))[0]
-    non_parental_atlas = glob.glob(os.path.join(os.path.dirname(image_file), "*AnnoSplit.nii*"))[0]
+    image_dir = os.path.dirname(image_file)
+    parental_atlases = sorted(glob.glob(os.path.join(image_dir, "*AnnoSplit_parental.nii*")))
+    non_parental_atlases = sorted(glob.glob(os.path.join(image_dir, "*AnnoSplit.nii*")))
+
+    if len(parental_atlases) == 0:
+        sys.exit(f"Error: No parental atlas file '*AnnoSplit_parental.nii*' found in '{image_dir}'.")
+    if len(non_parental_atlases) == 0:
+        sys.exit(f"Error: No non-parental atlas file '*AnnoSplit.nii*' found in '{image_dir}'.")
+
+    parental_atlas = parental_atlases[0]
+    non_parental_atlas = non_parental_atlases[0]
     
     if not os.path.exists(os.path.join(os.path.dirname(image_file), "t2_values_extraction")):
         os.mkdir(os.path.join(os.path.dirname(image_file), "t2_values_extraction"))
@@ -96,8 +113,8 @@ if __name__ == '__main__':
             roi_data = nii.load(atlas)
             rois = roi_data.get_fdata()  # Using get_fdata() for compatibility
 
-            outFileMean = getOutfile(atlas_type, image_file, "Mean")  # Fixed suffix to "Mean"
-            print(f"Outfile (Mean): {outFileMean}")
+            outFileMean = getOutfile(atlas_type, image_file, "SliceWisePerRegion")
+            print(f"Outfile (Slice-wise mean per region): {outFileMean}")
             extractT2MapdataMean(img, rois, outFileMean, acronyms)
 
             outFilePerRegion = getOutfile(atlas_type, image_file, "PerRegion")  # Fixed suffix to "PerRegion"
