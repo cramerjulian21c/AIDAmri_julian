@@ -140,7 +140,7 @@ The AIDAmri pipeline is containerized and structured as depicted in Figure 2. Th
 
 The container provides a command-line interface. It can be accessed by directly attaching to an interactive interface that lets you input AIDAmri commands within the isolated file system of the container, or via the `docker exec` command from your host shell.
 
-![Figure 2: Docker architecture draft.](images/figure-2-docker-architecture.png)
+![Figure 2: Docker architecture draft.](images/figure-2-docker-architecture.svg)
 
 *Figure 2: Docker architecture draft. The blue boxes within the Dockerfile box depict the main content layers. The boxes preceded with `$` are command-line codes.*
 
@@ -148,7 +148,7 @@ The container follows a basic Ubuntu 18.04 system, meaning that the root directo
 
 When referring to the mounted volume while in the container, use the path given at mounting, for example `/<MOUNTED DIRECTORY>`. This path will likely be different on your host system.
 
-![Figure 3: General structure of container file structure.](images/figure-3-container-filesystem.png)
+![Figure 3: General structure of container file structure.](images/figure-3-container-filesystem.svg)
 
 *Figure 3: General structure of container file structure. The paths are constructed from left to right, for example the absolute path of the `bin` folder in `aida` would be `/aida/bin`. Keep in mind that `/` is its own directory. The `<MOUNTED DIRECTORY>` and `<DATA>` directories are the same but can be named differently, depending on how it was named when mounted.*
 
