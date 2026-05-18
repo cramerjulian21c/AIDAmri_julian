@@ -64,9 +64,13 @@ For the complete list of atlas labels, see:
 annoVolume+2000_rsfMRI.nii.txt
 ```
 
-![Figure 1: Atlases included in the /lib folder.](images/figure-1-atlases.svg)
+<p align="center">
+  <img src="images/figure-1-atlases.svg" alt="Figure 1: Atlases included in the /lib folder." width="720">
+</p>
 
-*Figure 1: Atlases included in the /lib folder.*
+<p align="center">
+  <em>Figure 1: Atlases included in the /lib folder.</em>
+</p>
 
 ### Modular structure
 
@@ -140,23 +144,32 @@ The AIDAmri pipeline is containerized and structured as depicted in Figure 2. Th
 
 The container provides a command-line interface. It can be accessed by directly attaching to an interactive interface that lets you input AIDAmri commands within the isolated file system of the container, or via the `docker exec` command from your host shell.
 
-![Figure 2: Docker architecture draft.](images/figure-2-docker-architecture.svg)
+<p align="center">
+  <img src="images/figure-2-docker-architecture.svg" alt="Figure 2: Docker architecture" width="600">
+</p>
 
-*Figure 2: Docker architecture draft. The blue boxes within the Dockerfile box depict
+<p align="center">
+  <em>Figure 2: Docker architecture draft. The blue boxes within the Dockerfile box depict
 the main content layers. The boxes preceded with an $ are command line codes.
-Click on texts within the boxes for further information.*
+Click on texts within the boxes for further information.</em>
+</p>
 
 The container follows a basic Ubuntu 18.04 system, meaning that the root directory is called `/`. To share a volume between the host system and the container, bind mounts are commonly used. See [Running container and mounting data](#running-container-and-mounting-data) for further information.
 
 When referring to the mounted volume while in the container, use the path given at mounting, for example `/<MOUNTED DIRECTORY>`. This path will likely be different on your host system.
 
-![Figure 3: General structure of container file structure.](images/figure-3-container-filesystem.svg)
+<p align="center">
+  <img src="images/figure-3-container-filesystem.svg" alt="Figure 3: Container file system" width="520">
+</p>
 
-*Figure 3: General structure of container file structure. The paths are constructed
-from left to right (e.g. the absolute path of the bin folder in aida would be
-”/aida/bin”. Keep in mind that ”/” is its own directory. The <MOUNTED
-DIRECTORY> and <DATA> directories are the same but can be named differ-
-ently, depending on how it was named when mounted.*
+<p align="center">
+  <em>Figure 3: General structure of container file structure. The paths are constructed
+  from left to right, for example the absolute path of the <code>bin</code> folder in
+  <code>aida</code> would be <code>/aida/bin</code>. Keep in mind that <code>/</code>
+  is its own directory. The &lt;MOUNTED DIRECTORY&gt; and &lt;DATA&gt; directories
+  are the same but can be named differently, depending on how the mounted directory
+  was named.</em>
+</p>
 
 ### Creating image
 
@@ -377,7 +390,7 @@ Every script has arguments that can be specified when calling the script. For mo
 > [!IMPORTANT]
 > Always change your working directory to the folder where the corresponding script is located before running the script. For example, to run `preProcessing_T2.py`, change into the `2.1_T2PreProcessing` folder first:
 
-```text
+
 ### Convert raw data
 
 Convert Bruker raw data to NIfTI files by specifying the folder containing all raw folders of each scan.
