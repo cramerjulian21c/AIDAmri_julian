@@ -120,7 +120,7 @@ def findIncData(path):
         "*",
         "anat",
         "IncidenceData",
-        "IncidenceData_Lesion_mask.nii.gz",
+        "*IncidenceData_Lesion_mask.nii.gz",
     )
     return sorted(glob.glob(search_pattern))
 
