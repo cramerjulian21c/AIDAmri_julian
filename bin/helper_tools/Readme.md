@@ -1,320 +1,222 @@
-# 🧠✨ AIDAmri helper tools (`bin/helper_tools`)
+# AIDAmri Helper Tools
 
-Small utility scripts for data preparation, QC, and batch operations used in AIDAmri workflows.
+This folder contains utility scripts for data preparation, quality control, file cleanup, and batch support tasks used in AIDAmri workflows.
 
----
+## Overview
 
-## 🧰 Scripts at a glance
+| Script | Purpose |
+| --- | --- |
+| `DistributeStrokeMasks.py` | Resample and propagate existing stroke masks across timepoints with NiftyReg `reg_resample`. |
+| `MRI_files_summarizer.py` | Create a CSV inventory of NIfTI files under `**/brkraw/*.nii.gz`. |
+| `ReorientBatch.py` | Reorient NIfTI files to a target orientation, defaulting to AIDAmri's LIP orientation. |
+| `crop_T2.py` | Crop T2-weighted images to a defined field of view before preprocessing. |
+| `fieldmap_json_edit.py` | Add or update BIDS `IntendedFor` fields in fieldmap JSON files. |
+| `getAtlasRegionSize_BIDS.py` | Compute region-wise atlas volumes for BIDS-style folder structures. |
+| `getAtlasRegionSize_noBIDS.py` | Compute region-wise atlas volumes for non-BIDS folder structures. |
+| `plot_sourcedata_niftis.py` | Generate QC mosaic images and an HTML report for source NIfTI files. |
+| `remove_carets_spaces.sh` | Clean plain-text `subject` files by removing spaces and caret (`^`) characters. |
+| `reset_naming.py` | Clean Bruker `subject` files before PV-to-NIfTI conversion. |
 
-- 🧠 **getAtlasRegionSize.py** — Compute region-wise volumes from registered annotation NIfTI files (parental + standard annotations).
-- 🧬 **getAtlasRegionSize_BIDS.py** — BIDS variant: per-file outputs for all annotation variants (parental + standard).
-- 🏷️ **reset_naming.py** — Fix Bruker `subject` files (naming cleanup) before PV-to-NIfTI conversion.
-- 🧭 **ReorientBatch.py** — Batch-reorient NIfTI files to a target orientation (default: **LIP**) while preserving folder structure; handles FSL bvecs/bvals.
-- 📋 **MRI_files_summarizer.py** — Create a CSV inventory of NIfTI files under `**/brkraw/*.nii.gz` with basic fields parsed from filenames.
-- 🩹 **DistributeStrokeMasks.py** — Resample/propagate existing `*Stroke_mask.nii.gz` across timepoints using `reg_resample`.
-- 🕵️ **searchmissingClyinder.py** — From a `files.txt` list, report study IDs missing expected time windows (BL/P3/P7/P14/P28/P56).
+## Atlas Region Size
 
----
+### `getAtlasRegionSize_BIDS.py`
 
-<details>
-<summary>🧠 <strong>getAtlasRegionSize.py</strong> — Atlas region size outputs (parental + standard annotations)</summary>
+Computes region-wise volumes from registered annotation NIfTI files in BIDS-style datasets. The script searches recursively under the input folder and writes one `.txt` and one `.mat` output per annotation file.
 
-> 📍 **Location tip:** Place both atlas scripts in `./bin/3.1_T2Processing/` so relative paths to `./lib/` resolve as expected.
+Supported annotation patterns:
 
-`getAtlasRegionSize.py` computes **region-wise volumes** from registered annotation NIfTI files and writes both **voxel counts** and **mm³** per region.
-
-### ✅ Supported annotation types and outputs
-
-#### 1) 👪 Parental annotation (larger / coarser labels)
-
-**Input pattern**
-- `**/*_AnnorsfMRI.nii.gz`
-
-**Mask pairing**
-- `*_AnnorsfMRI.nii.gz` → `*_mask.nii.gz`
-
-**Outputs**
-- `region_size_mm_par.txt`
-- `region_size_mm_par.mat`
-
-These `_par` outputs correspond to the **parental atlas/annotation** (coarser / larger labels).
-
-#### 2) 🧩 Standard annotation
-
-**Input pattern**
-- `**/*_Anno.nii.gz`
-
-**Mask pairing**
-- `*_Anno.nii.gz` → `*_mask.nii.gz`
-
-**Outputs**
-- `region_size_mm.txt`
-- `region_size_mm.mat`
-
-These outputs correspond to the **standard atlas/annotation**.
-
-### 📐 Volume computation
-
-- **Region voxel counts**: computed from annotation labels (occurrences of each `label_id`).
-- **Brain voxel count**: computed from the paired mask (`mask > 0`).
-  - If the mask is missing, the script falls back to annotation foreground (`label > 0`).
-
-**Physical volumes** are derived from a **forced voxel size**:
-- `0.068359 × 0.068359 × 0.5 mm`
-- voxel volume: `0.0023364764 mm³`
-
-This voxel size and voxel volume are written into the header of each output `.txt`.
-
-### 🧾 Output format
-
-Each `.txt` contains:
-- a header line with **total brain volume** (vox + mm³)
-- a table:
-
-`ID  Name  Voxels  Unit  Volume  Unit`
-
-</details>
-
----
-
-<details>
-<summary>🧬 <strong>getAtlasRegionSize_BIDS.py</strong> — BIDS region size outputs (all annotation variants, per-file outputs)</summary>
-
-> 📍 **Location tip:** Place both atlas scripts in `./bin/3.1_T2Processing/` so relative paths to `./lib/` resolve as expected.
-
-`getAtlasRegionSize_BIDS.py` is the BIDS-oriented variant. It searches **recursively** under the given input folder and produces **one output pair (.txt + .mat) per annotation file**, writing everything into an `output_region_size/` folder inside the input directory.
-
-### 📂 Output folder
-
-All outputs are written to:
-- `<inputFolder>/output_region_size/`
-
-### 🧾 Supported annotation variants (processed all)
-
-#### 👪 Parental variants (larger / coarser labels)
-
-**Input patterns**
 - `**/*_Anno_parental.nii.gz`
 - `**/*_AnnoSplit_parental.nii.gz`
-- `**/*_AnnorsfMRI.nii.gz` (legacy parental naming)
-
-**Mask pairing**
-- `<annotation>.nii.gz` → `<annotation_basename>_mask.nii.gz`  
-  (implemented by replacing the recognized suffix with `_mask.nii.gz`)
-
-**Outputs (per input file)**
-- `<basename>_par.txt`
-- `<basename>_par.mat`
-
-Parental outputs preserve **left/right hemisphere region IDs**, including the common **+2000 right-hemisphere convention**, by filtering region IDs using the **parental lookup table keys**.
-
-#### 🧩 Standard variants
-
-**Input patterns**
+- `**/*_AnnorsfMRI.nii.gz`
 - `**/*_Anno.nii.gz`
 - `**/*_AnnoSplit.nii.gz`
 
-**Mask pairing**
-- `<annotation>.nii.gz` → `<annotation_basename>_mask.nii.gz`
+Outputs are written to:
 
-**Outputs (per input file)**
-- `<basename>.txt`
-- `<basename>.mat`
-
-### 📐 Volume computation
-
-- **Region voxel counts**: computed from annotation labels (occurrences of each `label_id`).
-- **Brain voxel count**: computed from the paired mask (`mask > 0`).
-  - If the mask is missing, the script falls back to annotation foreground (`label > 0`).
-
-**Physical volumes** are derived from a **forced voxel size**:
-- `0.068359 × 0.068359 × 0.5 mm`
-- voxel volume: `0.0023364764 mm³`
-
-This voxel size and voxel volume are written into the header of each output `.txt`.
-
-### 🧾 Output format
-
-Each per-file `.txt` contains:
-- a header with **brain volume** (vox + mm³) for that file
-- paths to the annotation and mask used
-- a table:
-
-`ID  Name  Voxels  Unit  Volume  Unit`
-
-### ▶️ Usage
-
-```bash
-python getAtlasRegionSize_BIDS.py -i /path/to/sub-*/ses-*
+```text
+<inputFolder>/output_region_size/
 ```
 
-</details>
+Usage:
 
----
+```bash
+python getAtlasRegionSize_BIDS.py -i /path/to/input_folder
+```
 
-<details>
-<summary>🏷️ <strong>reset_naming.py</strong> — Fix Bruker <code>subject</code> files (pre PV-to-NIfTI)</summary>
+### `getAtlasRegionSize_noBIDS.py`
 
-Prepares Bruker raw data before running `1_PV2NIfTiConverter/pv_conv2Nifti.py`.
+Computes region-wise volumes for non-BIDS workflows. It expects an input folder containing registered annotation files and paired masks.
 
-### 🔧 What it does (in-place)
+Usage:
 
-1. Removes the **first underscore** `_` in `SUBJECT_id` and `SUBJECT_study_name` lines.
-2. Replaces `baseline` (case-insensitive) with `PT0` in the study name.
+```bash
+python getAtlasRegionSize_noBIDS.py -i /path/to/T2w_folder
+```
 
-### ▶️ Usage
+Both atlas region scripts report voxel counts and physical volumes in `mm^3`. The volume calculation uses the configured voxel dimensions written in the output headers.
+
+## Bruker Subject File Cleanup
+
+### `reset_naming.py`
+
+Prepares Bruker raw data before PV-to-NIfTI conversion. The script scans recursively for files named `subject` and updates them in place.
+
+Main operations:
+
+- Removes the first underscore in `SUBJECT_id` and `SUBJECT_study_name` lines.
+- Replaces `baseline` with `PT0` in study names.
+
+Usage:
 
 ```bash
 python reset_naming.py -i /path/to/raw_data
 ```
 
-### 📥 Inputs
+### `remove_carets_spaces.sh`
 
-- `-i / --input`: parent folder containing Bruker raw data. The script expects a structure like:
-  - `projectfolder/subjects/ses/data` (and scans recursively for files named `subject`)
+Removes spaces and caret (`^`) characters from each line of a plain-text input file, typically a Bruker `subject` file.
 
-### 📤 Outputs
+Usage:
 
-- Updated `subject` files written back to disk (in-place).
+```bash
+bash remove_carets_spaces.sh /path/to/subject
+```
 
-</details>
+Outputs:
 
----
+- `subject_clean.txt`: cleaned lines with spaces and caret characters removed.
+- `subject_orig.txt`: copy of the original input file.
 
-<details>
-<summary>🧭 <strong>ReorientBatch.py</strong> — Batch reorient NIfTI files (default target: LIP)</summary>
+Note: despite the historical script comments, the current implementation does not remove underscores.
 
-Batch reorientation of `.nii` / `.nii.gz` under an input root while mirroring the directory structure to an output root.
+## Reorientation
 
-### ✅ Key behavior
+### `ReorientBatch.py`
 
-- Reorients NIfTI images to a target orientation (default intended for AIDAmri: **LIP**).
+Batch-reorients `.nii` and `.nii.gz` files under an input root while mirroring the folder structure to an output root.
+
+Key behavior:
+
+- Reorients NIfTI images to a target orientation, defaulting to `LIP`.
 - Copies non-NIfTI files unchanged.
-- If diffusion sidecars exist:
-  - `.bval` files are copied
-  - `.bvec` files are reoriented consistently with the image orientation change
+- Copies `.bval` sidecars.
+- Reorients `.bvec` sidecars consistently with the image orientation change.
 
-### 🧩 Requirements
-
-- Python packages: `nibabel`, `numpy`
-
-### ▶️ Usage
+Usage:
 
 ```bash
 python ReorientBatch.py -i /path/to/input_root -o /path/to/output_root
 ```
 
-### ⚙️ Common options
+Common options:
 
-- `-t / --target`: target orientation (3 letters from `{L,R,A,P,S,I}`), e.g. `LIP`
-- `-n / --non_interactive`: run without prompts (requires `-t`)
-- `-l / --logfile`: name of the log file written into the output root
+- `-t`, `--target`: target orientation, for example `LIP`.
+- `-n`, `--non_interactive`: run without prompts.
+- `-l`, `--logfile`: log file name written into the output root.
 
-### 📤 Outputs
+## Quality Control and Data Summaries
 
-- Reoriented dataset under `output_root` with the same relative structure as input.
-- A log file summarizing processing.
+### `MRI_files_summarizer.py`
 
-</details>
+Creates a CSV overview of NIfTI files under `**/brkraw/*.nii.gz`. Filename tokens are used to extract subject, session, run, and modality information.
 
----
-
-<details>
-<summary>📋 <strong>MRI_files_summarizer.py</strong> — Create a CSV overview of NIfTI files in <code>brkraw</code></summary>
-
-Scans for:
-- `**/brkraw/*.nii.gz`
-
-### 🧾 Parsed fields (from filename tokens)
-
-- `SubjectID` from `sub-...`
-- `TimePoint` from `ses-...`
-- `RunNumber` from `run-...`
-- `Modality` from the final token before `.nii.gz`
-
-### 🧩 Requirements
-
-- Python package: `pandas`
-
-### ▶️ Usage
+Usage:
 
 ```bash
 python MRI_files_summarizer.py -i /path/to/project -o /path/to/output_folder
 ```
 
-### 📤 Outputs
+Output:
 
-- `MRI_files_overview.csv` written to the output folder.
+```text
+MRI_files_overview.csv
+```
 
-</details>
+### `plot_sourcedata_niftis.py`
 
----
+Creates QC mosaic PNG files and an HTML report for NIfTI files in a subject/session folder.
 
-<details>
-<summary>🩹 <strong>DistributeStrokeMasks.py</strong> — Distribute stroke masks across timepoints (via <code>reg_resample</code>)</summary>
+Usage:
 
-Finds existing stroke masks and propagates them to other timepoints by resampling.
+```bash
+python plot_sourcedata_niftis.py /path/to/sub-001/ses-001 /path/to/qc_output
+```
 
-### 🔎 Search pattern
+Optional argument:
 
-- `**/anat/*Stroke_mask.nii.gz`
+- `--n_slices`: number of slices per orientation, default `10`.
 
-### 🔁 Workflow (per found mask)
+## T2 Cropping
 
-1. Resample mask into incidence space using:
-   - `*IncidenceData.nii.gz`
-   - `*MatrixInv.txt`
-2. For each other timepoint folder, resample from incidence space into that timepoint using:
-   - `*MatrixBspline.nii`
-   - reference `*BiasBet.nii.gz`
-3. Writes a log `missing_files_log.txt` when required files are missing.
+### `crop_T2.py`
 
-### 🧩 Requirements
+Crops a T2-weighted image to a defined field of view. The script uses FSL `fslroi` through Nipype and writes quick-look PNG images with FSL `slicer` when available.
 
-- `reg_resample` available on PATH (e.g., from NiftyReg)
+Usage:
 
-### ▶️ Usage
+```bash
+python crop_T2.py \
+  -i /path/to/input_T2w.nii.gz \
+  -x_max 120 \
+  -y_max 120 \
+  -z_max 40 \
+  -o /path/to/cropped_T2w.nii.gz
+```
+
+Optional lower bounds:
+
+- `-x_min`, default `0`
+- `-y_min`, default `0`
+- `-z_min`, default `0`
+
+## Fieldmap JSON Editing
+
+### `fieldmap_json_edit.py`
+
+Updates BIDS fieldmap JSON files with `IntendedFor` entries for matching DWI and functional files.
+
+Usage:
+
+```bash
+python fieldmap_json_edit.py \
+  --bids_root /path/to/proc_data \
+  --participant 001 \
+  --session PT0
+```
+
+Optional argument:
+
+- `--overwrite`: replace existing `IntendedFor` fields.
+
+## Stroke Mask Distribution
+
+### `DistributeStrokeMasks.py`
+
+Finds existing stroke masks and propagates them to other timepoints by resampling with NiftyReg.
+
+Search pattern:
+
+```text
+**/anat/*Stroke_mask.nii.gz
+```
+
+Workflow:
+
+1. Resample each stroke mask into incidence space using `*IncidenceData.nii.gz` and `*MatrixInv.txt`.
+2. Resample from incidence space into other timepoints using `*MatrixBspline.nii` and a `*BiasBet.nii.gz` reference.
+3. Write `missing_files_log.txt` when required files are missing.
+
+Usage:
 
 ```bash
 python DistributeStrokeMasks.py -i /path/to/subject_root_or_dataset_root
 ```
 
-### 📤 Outputs
+Outputs:
 
 - New `*Stroke_mask.nii.gz` files in timepoints that do not already have a stroke mask.
 - `missing_files_log.txt` in the input root.
 
-</details>
+Requirement:
 
----
-
-<details>
-<summary>🕵️ <strong>searchmissingClyinder.py</strong> — Report missing time windows from a <code>files.txt</code> list</summary>
-
-Reads a local `files.txt` (in the current working directory), extracts `studyID` and timepoint tokens from filenames, and reports which studies are missing expected time windows.
-
-### 🗓️ Expected windows
-
-- `BL`
-- `P3` (accepts P2/P3/P4)
-- `P7` (accepts P6/P7/P8)
-- `P14` (accepts P13/P14/P15)
-- `P28` (accepts P27–P32)
-- `P56` (accepts P55/P56/P57)
-
-### ▶️ Usage
-
-```bash
-python searchmissingClyinder.py
-```
-
-### 📥 Inputs
-
-- `files.txt` in the current directory (one filename per line)
-
-### 📤 Outputs
-
-- Printed report to stdout, e.g.:
-  - `GV_T3_...: missing BL, P7, ...`
-
-</details>
+- `reg_resample` must be available on `PATH`.
