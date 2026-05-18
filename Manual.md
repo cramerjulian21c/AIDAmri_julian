@@ -64,9 +64,9 @@ For the complete list of atlas labels, see:
 annoVolume+2000_rsfMRI.nii.txt
 ```
 
-![Figure 1: Atlases included in the /lib folder.](images/figure-1-atlases.png)
+![Figure 1: Atlases included in the /lib folder.](images/figure-1-atlases.svg)
 
-*Figure 1: Atlases included in the `/lib` folder.*
+*Figure 1: Atlases included in the /lib folder.*
 
 ### Modular structure
 
@@ -142,7 +142,9 @@ The container provides a command-line interface. It can be accessed by directly 
 
 ![Figure 2: Docker architecture draft.](images/figure-2-docker-architecture.svg)
 
-*Figure 2: Docker architecture draft. The blue boxes within the Dockerfile box depict the main content layers. The boxes preceded with `$` are command-line codes.*
+*Figure 2: Docker architecture draft. The blue boxes within the Dockerfile box depict
+the main content layers. The boxes preceded with an $ are command line codes.
+Click on texts within the boxes for further information.*
 
 The container follows a basic Ubuntu 18.04 system, meaning that the root directory is called `/`. To share a volume between the host system and the container, bind mounts are commonly used. See [Running container and mounting data](#running-container-and-mounting-data) for further information.
 
@@ -150,7 +152,11 @@ When referring to the mounted volume while in the container, use the path given 
 
 ![Figure 3: General structure of container file structure.](images/figure-3-container-filesystem.svg)
 
-*Figure 3: General structure of container file structure. The paths are constructed from left to right, for example the absolute path of the `bin` folder in `aida` would be `/aida/bin`. Keep in mind that `/` is its own directory. The `<MOUNTED DIRECTORY>` and `<DATA>` directories are the same but can be named differently, depending on how it was named when mounted.*
+*Figure 3: General structure of container file structure. The paths are constructed
+from left to right (e.g. the absolute path of the bin folder in aida would be
+”/aida/bin”. Keep in mind that ”/” is its own directory. The <MOUNTED
+DIRECTORY> and <DATA> directories are the same but can be named differ-
+ently, depending on how it was named when mounted.*
 
 ### Creating image
 
