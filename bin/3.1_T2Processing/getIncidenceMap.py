@@ -13,27 +13,11 @@ matplotlib.rcParams['svg.fonttype'] = 'none'     #text remains editable in SVG
 matplotlib.rcParams['pdf.fonttype'] = 42         # Editable text in PDF (Type 42)
 
 def build_output_prefix(inputLocation, prefix="heatmap_"):
-    """
-    Uses only the last two path elements of inputLocation.
-    Replaces slashes with underscores.
-    Example:
-      /aida/Data/proc/
-    """
-    # Normalize path
     input_abs = os.path.abspath(os.path.normpath(inputLocation))
-
-    # Split path into components
-    parts = input_abs.split(os.sep)
-
-    # Remove empty elements (important if path starts with /)
-    parts = [p for p in parts if p]
-
-    if len(parts) >= 2:
-        rel = "_".join(parts[-2:])
-    else:
-        rel = parts[-1]
-
-    return f"{prefix}{rel}"
+    input_name = os.path.basename(input_abs)
+    if not input_name:
+        sys.exit("Error: Input location must not be the filesystem root.")
+    return f"{prefix}{input_name}"
 
 
 def validate_heatmap_name(heatmap_name):
@@ -43,6 +27,15 @@ def validate_heatmap_name(heatmap_name):
     if os.path.basename(heatmap_name) != heatmap_name:
         sys.exit("Error: Heatmap name must be a file name, not a path.")
     return heatmap_name
+
+
+def validate_session(session):
+    session = session.strip()
+    if not session:
+        sys.exit("Error: Session must not be empty.")
+    if os.path.basename(session) != session:
+        sys.exit("Error: Session must be a folder name, not a path.")
+    return session
 
 
 def heatMap(incidenceMap, araVol, outputLocation, prefix):
@@ -113,11 +106,11 @@ def incidenceMap2(path_listInc, araTemplate, outputLocation, prefix):
     print("Maximum number of subjects overlapping at any voxel in the incidence volume:", max_overlap)
 
 
-def findIncData(path):
+def findIncData(path, session):
     search_pattern = os.path.join(
         path,
         "*",
-        "*",
+        session,
         "anat",
         "IncidenceData",
         "*IncidenceData_Lesion_mask.nii.gz",
@@ -130,6 +123,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Calculate an Incidence Map')
     parser.add_argument('-i', '--inputLocation', help='Directory: Brain extracted input data, e.g proc_data folder', required=True)
+    parser.add_argument('--session', help='Session folder to include, e.g. ses-PT3', required=True)
     parser.add_argument('-o', '--outputLocation', help='Directory: Output location for the heat map', default=None)
     parser.add_argument('-n', '--heatmapName', help='Optional output name for the heatmap files', default=None)
     parser.add_argument('-a', '--allenBrainTemplate', help='File: Annotations of Allen Brain', nargs='?', type=str,
@@ -141,13 +135,14 @@ if __name__ == "__main__":
     outputLocation = args.outputLocation
     allenBrainTemplate = args.allenBrainTemplate
     heatmapName = args.heatmapName
+    session = validate_session(args.session)
 
     # If no output location is provided → use input directory
     if outputLocation is None:
         outputLocation = inputLocation
 
     if heatmapName is None:
-        prefix = build_output_prefix(inputLocation)
+        prefix = f"{build_output_prefix(inputLocation)}_{session}"
     else:
         prefix = validate_heatmap_name(heatmapName)
 
@@ -159,11 +154,11 @@ if __name__ == "__main__":
     if not os.path.exists(allenBrainTemplate):
         sys.exit("Error: '%s' is not an existing file." % (allenBrainTemplate,))
 
-    regInc_list = findIncData(inputLocation)
+    regInc_list = findIncData(inputLocation, session)
 
     if len(regInc_list) < 1:
-        sys.exit("Error: No masked strokes found in the provided directory.")
+        sys.exit("Error: No masked strokes found for session '%s' in the provided directory." % (session,))
 
-    print("'%i' folders are part of the incidence map." % (len(regInc_list),))
+    print("'%i' folders from session '%s' are part of the incidence map." % (len(regInc_list), session,))
     incidenceMap2(regInc_list, allenBrainTemplate, outputLocation, prefix)
     sys.exit(0)
