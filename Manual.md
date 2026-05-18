@@ -109,7 +109,7 @@ Converts raw MRI data into the BIDS structure and NIfTI format, including all ne
 
 ## Installation
 
-AIDAmri is distributed as a Docker image. We highly recommend the usage of the Docker image.
+AIDAmri is distributed as a Docker image. Docker is a platform that allows you to run applications in isolated environments called containers. This means that all the software dependencies and configurations needed to run AIDAmri are included in the Docker image, making it easier to set up and use the pipeline without worrying about compatibility issues.
 
 ### Prerequisites
 
@@ -118,7 +118,7 @@ The following are required to launch your AIDAmri instance:
 - Docker engine
   - Getting started tutorial for Docker
 - Windows only: Bash subsystem, for example Git Bash
-- At least 10.6 GB free disk memory
+- At least 20 GB free disk memory
 
 We advise you to get comfortable with shell or command-line interface usage.
 
