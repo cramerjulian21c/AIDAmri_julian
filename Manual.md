@@ -4,6 +4,8 @@
 Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt  
 **Status:** May 2026  
 Department of Neurology, University Hospital Frankfurt, Germany
+> [!NOTE]
+> View this manual online on Github, an Python IDE or text editor that supports Markdown formatting for better readability.
 
 ## Contents
 
@@ -395,19 +397,6 @@ python registration_T2.py -i /aida/DATA/PATH/TO/anat/testDataBiasBet.nii
 
 For an input file called `<input>.nii.gz`, `registration_T2.py` creates the following output files in the same `anat` folder:
 
-```text
-<input>_TemplateAff.nii.gz
-<input>_Template.nii.gz
-<input>_TemplateAllen.nii.gz
-<input>MatrixAff.txt
-<input>MatrixInv.txt
-<input>MatrixBspline.nii
-<input>_Anno.nii.gz
-<input>_AnnoSplit.nii.gz
-<input>_Anno_parental.nii.gz
-<input>_AnnoSplit_parental.nii.gz
-```
-
 - `<input>_TemplateAff.nii.gz`: MRI template (NP_template_sc0.nii.gz) after affine registration to the T2 image.
 - `<input>_Template.nii.gz`: MRI template (NP_template_sc0.nii.gz) after non-linear registration to the T2 image.
 - `<input>_TemplateAllen.nii.gz`: Allen Brain Reference Template registered to the T2 image.
@@ -438,17 +427,11 @@ If you previously defined a region of interest, such as a stroke lesion, you can
 Two atlas variants can be evaluated:
 
 - `getIncidenceSize.py` uses the regular left/right-separated ARA atlas `ARA_annotationR+2000.nii.gz` and the subject-space annotation file `*_AnnoSplit.nii.gz`.
-- `getIncidenceSize_par.py` uses the parental atlas `annoVolume+2000_rsfMRI.nii.gz` and the subject-space annotation file `*_AnnoSplit_parental.nii.gz`.
+- `getIncidenceSize_par.py` uses the left/right-separated parental atlas `annoVolume+2000_rsfMRI.nii.gz` and the subject-space annotation file `*_AnnoSplit_parental.nii.gz`.
 
-Both scripts expect the corresponding `.../anat` folder as input. The folder must contain exactly one stroke mask, one BET image, one matching annotation file and one `IncidenceData_Lesion_mask.nii.gz` file.
+Both scripts expect the corresponding `.../anat` folder as input. The folder must contain exactly one stroke mask, one BET image, one matching annotation file and one `IncidenceData_Lesion_mask.nii.gz` file in the Incidence_Data folder. The output are stored in `.../anat/affected_Regions`:
 
-```text
-python getIncidenceSize.py -i .../testData/anat
-python getIncidenceSize_par.py -i .../testData/anat
-```
-
-The non-parental affected-region results from `getIncidenceSize.py` are stored in `.../anat/affected_Regions`:
-
+The `getIncidenceSize.py` script creates the following output files in `.../anat/affected_Regions`:
 ```text
 *affectedRegions.csv
 *affectedRegions.nii.gz
@@ -461,7 +444,7 @@ The labelled non-parental incidence lesion mask is stored in `.../anat/Incidence
 *IncidenceData_Anno_lesion_mask.nii.gz
 ```
 
-The parental affected-region results from `getIncidenceSize_par.py` are stored in `.../anat/affected_Regions`:
+The `getIncidenceSize_par.py` script creates the following output files in `.../anat/affected_Regions`:
 
 ```text
 *affectedRegions_Parental.csv
@@ -477,17 +460,26 @@ The labelled parental incidence lesion mask is stored in `.../anat/IncidenceData
 
 ### Processing of ROI stroke mask data
 
-From masks drawn on the T2-weighted images, it is possible to determine both the incidence map and the size of affected regions. For example, if a `day1` folder contains multiple `Mouse 1` to `Mouse 15` folders and the processed T2 data are in those folders, the command would be:
+The anatomical processing can produce two different kinds of regional output: T2 values per atlas region and stroke-mask based incidence or affected-region results.
+
+The script `t2_value_extraction.py` extracts T2w image values for every registered atlas region. It uses the brain-extracted T2 image together with the registered split annotation files, for example `*_AnnoSplit.nii.gz` and `*_AnnoSplit_parental.nii.gz`. The output is written to:
 
 ```text
-python getIncidenceMap.py -i .../day1 -s "Mouse*"
+.../anat/t2_values_extraction
 ```
 
-It is also possible to determine the region size as voxels and volume in mm³:
+The folder contains CSV files with mean T2 values and region sizes for the non-parental and parental atlas variants.
+
+
+From masks drawn on the T2-weighted images, it is also possible to determine incidence maps.
+
+The script `getIncidenceMap.py` combines registered lesion masks from multiple subjects into one group-level incidence map. It searches below the given input folder for lesion masks in the `anat/IncidenceData` folders of processed subjects. Use `--session` to select the session that should be included in the heatmap calculation.
 
 ```text
-python getRegionSize_par.py -i .../T2w
+python getIncidenceMap.py -i .../proc_data --session session_name
 ```
+
+This creates an incidence image showing how many subjects overlap at each voxel, together with heatmap output files. The input folder should be a parent folder that contains the processed subject folders.
 
 ### Processing of DTI data
 
