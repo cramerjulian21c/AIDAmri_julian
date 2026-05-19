@@ -5,9 +5,9 @@
 We would like to thank Paul Camacho from the Biomedical Imaging Center, University of Illinois Urbana-Champaign, for his valuable support and contributions to this release.
 
 
-This release summarizes the major changes introduced in the Version 3.
 
-## Highlights
+This release note summarizes the major changes introduced in AIDAmri v3.0.
+
 
 ## Highlights
 
@@ -23,7 +23,7 @@ This release summarizes the major changes introduced in the Version 3.
 ## Docker and Dependencies
 
 - Base image changed from `ubuntu:18.04` to `ubuntu:22.04`.
-- Added platform-aware Docker builds
+- Added platform-aware Docker builds.
 - Updated Python setup to use the system Python 3 on Ubuntu 22.04.
 - Updated `nipype` from `1.1.2` to `1.7.0`.
 - Added ANTs 2.6.2 for `N4BiasFieldCorrection`.
@@ -43,10 +43,10 @@ This release summarizes the major changes introduced in the Version 3.
 
 - Added b0 averaging support.
 - Added Patch2Self denoising support.
-- Added automatic bval/bvec repetition adjustment after conversion.
+- Added automatic `.bval`/`.bvec` repetition adjustment after conversion.
 - Added DSI Studio reconstruction options for `dti` and `gqi`.
 - Added `in_vivo` and `ex_vivo` parameter presets.
-- Added isotropic resampling options
+- Added isotropic resampling options.
 - Added tracking presets and support for custom tracking parameters.
 - Added thread-count control for tractography.
 - Added support for skipping slice-wise motion correction.
@@ -58,7 +58,6 @@ This release summarizes the major changes introduced in the Version 3.
 
 - Enhanced `batchProc.py` argument handling.
 - Added grouped command-line options for batch control, CPU usage, T2 preprocessing, DWI preprocessing, animal BET settings, and DSI Studio processing.
-
 - Added batch-level forwarding of new T2, DWI, BET, and DSI Studio options.
 
 ## Incidence and Stroke Mask Analysis
@@ -83,13 +82,21 @@ This release summarizes the major changes introduced in the Version 3.
 
 - Updated `conv2Nifti_auto.py` so the default `proc_data` directory is created next to the raw data folder.
 - Added automatic bval/bvec adjustment during conversion.
-- Added QC image generation and HTML reports for converted NIfTI files.
+- Added automatic `.bval`/`.bvec` adjustment during conversion.
 - Added `plot_sourcedata_niftis.py` for source data QC mosaics.
 - Added `crop_T2.py` for cropping T2-weighted images before preprocessing.
 - Added `fieldmap_json_edit.py` for editing BIDS `IntendedFor` fields.
 - Added a helper script for cleaning subject list text files by removing spaces and caret characters.
 - Added an `immv` installation helper so `bet4animal` can use the FSL image-moving utility inside the Docker container.
 
+## Breaking or User-visible Changes
+
+- A Docker image rebuild is required.
+- DSI Studio auto-gradient mode now requires matching `.bval` and `.bvec` files.
+- `lib/DTI_Jones30.txt` was removed.
+- Incidence map generation now requires an explicit `--session`.
+- Some output file and folder names changed, especially for DSI connectivity, incidence maps, affected regions, and T2 value extraction.
+- Preprocessing now performs stricter LIP orientation and NIfTI header checks.
 ## Documentation and Figures
 
 - Added a new Markdown manual for AIDAmri v3.0.
@@ -97,6 +104,7 @@ This release summarizes the major changes introduced in the Version 3.
 - Added SVG versions of documentation figures.
 - Removed the committed `manual.pdf`.
 - Updated README wording and Docker/reorientation notes.
+- Reorganized repository helper files into `assets/`, `docs/`, and `install/`.
 
 ## Data and Atlas Files
 
