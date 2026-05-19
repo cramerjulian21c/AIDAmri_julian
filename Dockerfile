@@ -102,8 +102,9 @@ ENV PATH=/aida/bin:/aida/bin/3.2_DTIConnectivity:$PATH
 RUN cp bin/3.2_DTIConnectivity/dsi_main.py dsi_main
 COPY lib/ lib/
 # make install_immv executable and run it
-RUN chmod +x /aida/bin/install_immv.sh
-RUN /aida/bin/install_immv.sh
+COPY install/install_immv.sh install/install_immv.sh
+RUN chmod +x /aida/install/install_immv.sh
+RUN /aida/install/install_immv.sh
 RUN echo "/aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio" > /aida/bin/3.2_DTIConnectivity/dsi_studioPath.txt
 RUN test -x /aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio
 
@@ -111,4 +112,3 @@ RUN pip install dipy scikit-learn
 RUN pip install fslpy
 RUN wget -O /aida/bin/bet4animal "https://git.fmrib.ox.ac.uk/fsl/bet2/-/raw/master/bet4animal?ref_type=heads&inline=false" && \
     chmod +x /aida/bin/bet4animal
-RUN cd /aida/bin && bash -c "/aida/bin/install_immv.sh"

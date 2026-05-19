@@ -303,7 +303,7 @@ List of functions and script groups:
 - `4.1_T2mapPreProcessing/`: T2 map preprocessing, atlas registration and extraction of region-wise T2 map values.
 - `5.1_ROI_analysis/`: ROI-based analyses for user-defined regions, for example peri-infarct regions around stroke lesions, including mask dilation, transform application, seed ROI creation and ROI inspection.
 - `helper_tools/`: additional utilities for data preparation and quality control, including naming cleanup, batch reorientation, fieldmap JSON updates, stroke mask distribution, source-data plotting and atlas region size summaries.
-- `adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
+- `helper_tools/adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
 
 All program examples are listed only with the mandatory input parameters. For more details or help, call:
 

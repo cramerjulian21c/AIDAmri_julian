@@ -333,7 +333,7 @@ def fileCopy(list_of_data, input_path):
 
 if __name__ == "__main__":
     import argparse
-    from adjustbvecRep import adjust_bvec_rep
+    from helper_tools.adjustbvecRep import adjust_bvec_rep
 
     parser = argparse.ArgumentParser(description='This script automates the conversion from the raw bruker data format to the NIfTI format using 1_PV2NIfTiConverter/pv_conv2Nifti.py. The raw data needs to be in the following structure: projectfolder/days/subjects/data/. For this script to work, the groupMapping.csv needs to be adjusted, where the group name of every subject''s folder in the raw data structure needs to be specified. This script computes the conversion either for all data in the raw project folder or for certain days and/or groups specified through the optional arguments -s. During the processing a new folder called proc_data is created next to the raw data folder unless an output directory is specified with -o. Example: python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data -s Baseline P1 P7 P14 P28')
     parser.add_argument('-i', '--input', required=True,
