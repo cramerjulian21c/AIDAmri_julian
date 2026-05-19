@@ -1,11 +1,5 @@
 # AIDAmri v3.0 Release Notes
 
-## Acknowledgements
-
-We would like to thank Paul Camacho from the Biomedical Imaging Center, University of Illinois Urbana-Champaign, for his valuable support and contributions to this release.
-
-
-
 This release note summarizes the major changes introduced in AIDAmri v3.0.
 
 
@@ -112,3 +106,7 @@ This release note summarizes the major changes introduced in AIDAmri v3.0.
 - Added `lib/annotation_label_IDs.csv`.
 - Removed deprecated `lib/DTI_Jones30.txt`.
 - Removed deprecated `lib/MPI_maskBIG_for_incidence2.nii`.
+
+## Acknowledgements
+
+We would like to thank Paul Camacho from the Biomedical Imaging Center, University of Illinois Urbana-Champaign, for his valuable support and contributions to this release.

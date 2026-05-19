@@ -2,7 +2,7 @@
 
 **AIDAmri v3.0**
 
-Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt
+Julian Cramer, Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt
 
 **Status:** May 2026
 
