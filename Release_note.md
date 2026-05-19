@@ -9,11 +9,16 @@ This release summarizes the major changes introduced in the Version 3.
 
 ## Highlights
 
-- Updated the container workflow for Python 3.10, DSI Studio 2025, FSL
-- Added improved support for animal brain extraction, bias field correction, DWI preprocessing, DSI Studio connectivity analysis, and incidence map generation.
-- Introduced ANTs N4 bias correction, DIPY Patch2self, fslpy, and bet4animal.
-- Improvement of batchProc.py by adding multiple new command-line arguments
-- Improved NIfTI handling across the pipeline, including orientation checks
+## Highlights
+
+- Updated the Docker environment to Ubuntu 22.04 with Python 3.10 and DSI Studio 2025.
+- Added `bet4animal` support and improved BET handling for mouse and rat brain extraction.
+- Added ANTs N4 bias field correction and DIPY Patch2Self-based DWI denoising.
+- Improved DWI/DSI Studio processing, including automatic `.bval`/`.bvec` handling, `dti`/`gqi` reconstruction, custom tracking parameters, and optional skipping of slice-wise motion correction.
+- Added stricter LIP orientation and NIfTI header checks to catch incompatible input data earlier.
+- Improved incidence map and stroke mask analysis, including session-specific incidence maps, CSV affected-region summaries, and labelled lesion masks.
+- Expanded `batchProc.py` with new options for T2, DWI, BET, CPU usage, and DSI Studio processing.
+- Added a new AIDAmri v3.0 Markdown manual and updated documentation figures.
 
 ## Docker and Dependencies
 
@@ -22,6 +27,7 @@ This release summarizes the major changes introduced in the Version 3.
 - Updated Python setup to use the system Python 3 on Ubuntu 22.04.
 - Updated `nipype` from `1.1.2` to `1.7.0`.
 - Added ANTs 2.6.2 for `N4BiasFieldCorrection`.
+- Modernized the NiftyReg Docker build for Ubuntu 22.04 while keeping the same pinned NiftyReg commit.
 - Updated DSI Studio to the Ubuntu 22.04 build from 2025.04.16.
 - Added installation support for `immv` and `bet4animal`.
 
@@ -30,7 +36,7 @@ This release summarizes the major changes introduced in the Version 3.
 - Added stricter LIP orientation handling and header checks for T2 and DWI preprocessing.
 - Added ANTs N4 bias field correction as an alternative to MICO.
 - Added options to skip bias correction or BET where supported.
-- Added bet4animal`support for animal brain extraction.
+- Added `bet4animal` support for animal brain extraction.
 - Added user-adjustable BET parameters: horizontal gradient and center coordinates.
 
 ## DWI and DSI Studio
