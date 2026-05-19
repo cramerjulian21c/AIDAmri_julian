@@ -6,7 +6,7 @@
 
 <h1>AIDA<i>mri</i></h1>
 
-<img align="left" src="AIDA_Logo.png" width="120">
+<img align="left" src="assets/AIDA_Logo.png" width="120">
 Atlas-based Imaging Data Analysis Pipeline (AIDA) for structural and functional MRI of the mouse brain
 <br/>
 <br/>
@@ -31,7 +31,7 @@ Please read this README completely before using AIDAmri. Here you will find the 
    The output of the pipeline includes connectivity matrices that can be used for further analysis of brain network changes in health and disease.
 
 <p align="center">
-  <img src="AIDAmri_drawing.png" style="max-width: 100%; height: auto;">
+  <img src="assets/AIDAmri_drawing.png" style="max-width: 100%; height: auto;">
 </p>
 
 Pipeline overview from [Pallast et al.](https://doi.org/10.3389/fninf.2019.00042)

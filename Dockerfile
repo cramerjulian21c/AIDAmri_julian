@@ -83,7 +83,7 @@ RUN pip install --upgrade pip &&\
 	pip install -r requirements.txt
 
 # installation of FSL 5.0.11 with modified installer 
-COPY fslinstaller_mod.py ./
+COPY install/fslinstaller_mod.py ./
 RUN python3 fslinstaller_mod.py -V 5.0.11
 
 # Configure environment

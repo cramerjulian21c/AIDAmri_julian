@@ -11,7 +11,7 @@ Department of Neurology, University Hospital Frankfurt, Germany
 > [!NOTE]
 > View this manual online on GitHub, in a Python IDE or in a text editor that supports Markdown formatting for better readability.
 >
-> An older interactive workshop notebook is available as [`AIDAmri_workshop.ipynb`](AIDAmri_workshop.ipynb). It can still be useful as a hands-on walkthrough, but it is outdated and may not reflect the current AIDAmri v3.0 Docker image, command-line options, or file naming conventions.
+> An older interactive workshop notebook is available as [`AIDAmri_workshop.ipynb`](docs/AIDAmri_workshop.ipynb). It can still be useful as a hands-on walkthrough, but it is outdated and may not reflect the current AIDAmri v3.0 Docker image, command-line options, or file naming conventions.
 
 ## Contents
 
@@ -189,7 +189,7 @@ Check the folder contents with:
 ls
 ```
 
-A file named `Dockerfile`, as well as `fslinstaller_mod.py`, a `bin/` folder and a `lib/` folder should be located in this directory. Then launch the Docker daemon to build the image:
+A file named `Dockerfile`, as well as the `install/`, `bin/` and `lib/` folders should be located in this directory. Then launch the Docker daemon to build the image:
 
 ```text
 docker build -t aidamri:latest -f Dockerfile .
