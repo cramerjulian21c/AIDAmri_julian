@@ -7,6 +7,7 @@ This folder contains utility scripts for data preparation, quality control, file
 | Script | Purpose |
 | --- | --- |
 | `DistributeStrokeMasks.py` | Resample and propagate existing stroke masks across timepoints with NiftyReg `reg_resample`. |
+| `adjustbvecRep.py` | Adjust repeated DWI `.bval` and `.bvec` sidecars after conversion. |
 | `MRI_files_summarizer.py` | Create a CSV inventory of NIfTI files under `**/brkraw/*.nii.gz`. |
 | `ReorientBatch.py` | Reorient NIfTI files to a target orientation, defaulting to AIDAmri's LIP orientation. |
 | `crop_T2.py` | Crop T2-weighted images to a defined field of view before preprocessing. |
@@ -115,6 +116,18 @@ Common options:
 - `-l`, `--logfile`: log file name written into the output root.
 
 ## Quality Control and Data Summaries
+
+### `adjustbvecRep.py`
+
+Adjusts `.bval` and `.bvec` files for DWI acquisitions where the gradient table needs to be repeated to match the number of image volumes. Files with unusable volume counts are moved into hidden subfolders such as `.single_volume` or `.low_volume_count`.
+
+Usage:
+
+```bash
+python adjustbvecRep.py /path/to/sub-001/ses-001
+```
+
+This helper is called automatically by `conv2Nifti_auto.py` during conversion when DWI data are present.
 
 ### `MRI_files_summarizer.py`
 

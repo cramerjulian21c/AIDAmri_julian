@@ -10,6 +10,8 @@ Department of Neurology, University Hospital Frankfurt, Germany
 
 > [!NOTE]
 > View this manual online on GitHub, in a Python IDE or in a text editor that supports Markdown formatting for better readability.
+>
+> An older interactive workshop notebook is available as [`AIDAmri_workshop.ipynb`](docs/AIDAmri_workshop.ipynb). It can still be useful as a hands-on walkthrough, but it is outdated and may not reflect the current AIDAmri v3.0 Docker image, command-line options, or file naming conventions.
 
 ## Contents
 
@@ -41,11 +43,11 @@ Department of Neurology, University Hospital Frankfurt, Germany
   - [Processing of fMRI data](#processing-of-fmri-data)
   - [Peri-infarct ROI analysis](#peri-infarct-roi-analysis)
 
-## Introduction
+<h2 id="introduction">Introduction <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 The Atlas-based Processing Pipeline for functional and structural MRI data (**AIDAmri**) was developed for automated processing of mouse brain MRI. AIDAmri works with T2-weighted MRI (`anat`), diffusion weighted MRI or diffusion tensor imaging (`dwi`), resting-state functional MRI (`func`) and T2 map values (`t2map`).
 
-### Atlas-based analysis
+<h3 id="atlas-based-analysis">Atlas-based analysis <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The Allen Mouse Brain Reference Atlas (ARA, CCF v3) is registered on each of these MRI data sets and is used to analyse regions of interest. Furthermore, the regions of the ARA are used as seed points for the connectivity and activity matrices. User-defined ROIs and masks can be generated separately and used for analysis, for example stroke lesion masks and peri-infarct regions.
 
@@ -72,7 +74,7 @@ annoVolume+2000_rsfMRI.nii.txt
   <em>Figure 1: Atlases included in the /lib folder.</em>
 </p>
 
-### Modular structure
+<h3 id="modular-structure">Modular structure <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The AIDAmri processing pipeline consists of several modular units designed to process structural and functional MRI data. It is possible to apply an ROI, such as a stroke lesion mask, during the processing steps.
 
@@ -111,11 +113,11 @@ Converts raw MRI data into the BIDS structure and NIfTI format, including all ne
 - **Functional connectivity analysis:** correlation of BOLD signals between brain regions is computed to assess functional connectivity.
 - **Output:** produces connectivity matrices that represent structural and functional connections within the brain, which can be used for further analysis, such as graph theory applications.
 
-## Installation
+<h2 id="installation">Installation <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 AIDAmri is distributed as a Docker image. Docker is a platform that allows you to run applications in isolated environments called containers. This means that all the software dependencies and configurations needed to run AIDAmri are included in the Docker image, making it easier to set up and use the pipeline without worrying about compatibility issues.
 
-### Prerequisites
+<h3 id="prerequisites">Prerequisites <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The following are required to launch your AIDAmri instance:
 
@@ -132,13 +134,13 @@ Download or clone the repository:
 git clone https://github.com/aswendtlab/AIDAmri.git
 ```
 
-### Docker usage
+<h3 id="docker-usage">Docker usage <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 This guide introduces the usage of Docker-based containers of the AIDAmri tools for Unix/Linux-based systems, including Linux and macOS. The commands shown are written for such systems, and you may copy the commands into your shell including backslashes, as they indicate line breaks.
 
 Windows users may use a subsystem like Git Bash to use the software. You may also use the Docker Desktop application to get access to the Docker image.
 
-### General overview
+<h3 id="general-overview">General overview <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The AIDAmri pipeline is containerized and structured as depicted in Figure 2. The `Dockerfile` located in the repository provides the installation routine for every required dependency. The `docker build` command constructs the image, meaning the installed software on your system. The `docker run` command creates a runnable instance of this image, called a container.
 
@@ -171,7 +173,7 @@ When referring to the mounted volume while in the container, use the path given 
   was named.</em>
 </p>
 
-### Creating image
+<h3 id="creating-image">Creating image <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Before you can build the Docker image, you need to open a terminal. In the terminal, change into the AIDAmri repository folder that you previously cloned from GitHub:
 
@@ -187,7 +189,7 @@ Check the folder contents with:
 ls
 ```
 
-A file named `Dockerfile`, as well as `fslinstaller_mod.py`, a `bin/` folder and a `lib/` folder should be located in this directory. Then launch the Docker daemon to build the image:
+A file named `Dockerfile`, as well as the `install/`, `bin/` and `lib/` folders should be located in this directory. Then launch the Docker daemon to build the image:
 
 ```text
 docker build -t aidamri:latest -f Dockerfile .
@@ -205,7 +207,7 @@ Docker usually uses its build cache during this process. This means that unchang
 
 Keep in mind that existing containers are not updated automatically. To use the updated image, stop and remove the old container, then start a new container from the rebuilt image.
 
-### Running container and mounting data
+<h3 id="running-container-and-mounting-data">Running container and mounting data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Before starting the container, check where your MRI data is stored on your computer. You will need the **absolute path** to this folder.
 To start an AIDAmri container and make your data available inside it, run:
@@ -284,7 +286,7 @@ docker exec -w /aida/bin aidamri_container \
 
 Here, `-w /aida/bin` sets the working directory inside the container to `/aida/bin`.
 
-## Functions
+<h2 id="functions">Functions <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 List of functions and script groups:
 
@@ -301,7 +303,7 @@ List of functions and script groups:
 - `4.1_T2mapPreProcessing/`: T2 map preprocessing, atlas registration and extraction of region-wise T2 map values.
 - `5.1_ROI_analysis/`: ROI-based analyses for user-defined regions, for example peri-infarct regions around stroke lesions, including mask dilation, transform application, seed ROI creation and ROI inspection.
 - `helper_tools/`: additional utilities for data preparation and quality control, including naming cleanup, batch reorientation, fieldmap JSON updates, stroke mask distribution, source-data plotting and atlas region size summaries.
-- `adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
+- `helper_tools/adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
 
 All program examples are listed only with the mandatory input parameters. For more details or help, call:
 
@@ -316,7 +318,7 @@ After a successful download, you can choose either to process single files manua
 > [!IMPORTANT]
 > Process your T2 data first so that preprocessing of DTI, fMRI and T2 map data works correctly.
 
-## Batch processing
+<h2 id="batch-processing">Batch processing <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 AIDAmri provides functions for data conversion and batch processing. Complete processing requires two scripts:
 
@@ -384,14 +386,14 @@ Please have a look into the help page of `batchProc.py` for more information on 
 python batchProc.py -h
 ```
 
-## Processing single files step-by-step
+<h2 id="processing-single-files-step-by-step">Processing single files step-by-step <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 Every script has arguments that can be specified when calling the script. For more information on the arguments, every script has a help page which can be accessed by calling the script with the `-h` flag. The following sections provide examples of how to process single files step-by-step.
 > [!IMPORTANT]
 > Always change your working directory to the folder where the corresponding script is located before running the script. For example, to run `preProcessing_T2.py`, change into the `2.1_T2PreProcessing` folder first:
 
 
-### Convert raw data
+<h3 id="convert-raw-data">Convert raw data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Convert Bruker raw data to NIfTI files by specifying the folder containing all raw folders of each scan.
 
@@ -408,7 +410,7 @@ Move the newly generated file to a new project folder if you want to separate ra
 projectfolder/days/groups/subjects/data/
 ```
 
-### Preprocessing of anatomical data
+<h3 id="preprocessing-of-anatomical-data">Preprocessing of anatomical data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 > [!WARNING]
 > Before you process any data please visually inspect the NIFTIs to check for correct orientation and quality. For more information please see the "Data Format and Orientation Requirements" section in the [README](README.md).
@@ -426,7 +428,7 @@ The default brain extraction method is FSL's `BET`, which was originally develop
 However, in practice, neither method is always superior. In some cases, the default `BET` method gives better results, while in other cases `bet4animal` works better. Therefore, we recommend testing both methods and visually checking the resulting brain extraction.
 The brain-extracted output file is saved with the ending `...Bet.nii.gz`.
 
-### Registration of anatomical data
+<h3 id="registration-of-anatomical-data">Registration of anatomical data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 The next step includes registration of the Allen Brain Reference Atlas with the brain-extracted T2 dataset.
 
 There is an option to segment an additional region of interest, such as the stroke lesion. You can segment the region using the brain-extracted dataset as reference, ending with `...Bet.nii.gz`. We recommend conducting this step with ITK-SNAP. The saved file should end with `...Stroke_mask.nii.gz`.
@@ -463,7 +465,7 @@ IncidenceData/<input>_IncidenceData_Lesion_mask.nii.gz
 - `<input>_IncidenceData.nii.gz`: T2 image registered into Allen template space, used for incidence-map processing.
 - `<input>_IncidenceData_Lesion_mask.nii.gz`: stroke or lesion mask registered into Allen template space. This file is only created if a matching `*Stroke_mask.nii.gz` file exists in the same folder.
 
-### Processing of anatomical data
+<h3 id="processing-of-anatomical-data">Processing of anatomical data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 If you previously defined a region of interest, such as a stroke lesion, you can calculate the ROI size and determine which atlas regions overlap with it. In this step, the segmented ROI file, for example `...Stroke_mask.nii.gz`, is overlaid with the registered atlas annotation.
 
 Two atlas variants can be evaluated:
@@ -500,7 +502,7 @@ The labelled parental incidence lesion mask is stored in `.../anat/IncidenceData
 *IncidenceData_Anno_parental_lesion_mask.nii.gz
 ```
 
-### Processing of ROI stroke mask data
+<h3 id="processing-of-roi-stroke-mask-data">Processing of ROI stroke mask data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The anatomical processing can produce two different kinds of regional output: T2 values per atlas region and stroke-mask based incidence or affected-region results.
 
@@ -522,7 +524,7 @@ python getIncidenceMap.py -i .../proc_data --session session_name
 
 This creates an incidence image showing how many subjects overlap at each voxel. The input folder should be a parent folder that contains the processed subject folders.
 
-### Preprocessing of T2 map data
+<h3 id="preprocessing-of-t2-map-data">Preprocessing of T2 map data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 T2 map data should be processed after the corresponding anatomical `anat` data have already been preprocessed and registered. The T2 map workflow uses the anatomical data and atlas registration results as reference for region-wise T2 value extraction.
 
@@ -534,7 +536,7 @@ python preProcessing_T2MAP.py -i .../t2map/testData_MEMS.nii.gz
 
 The preprocessing step applies smoothing, bias-field correction and brain extraction. The BET parameters can be adjusted with `-f`, `-r` and `-g`.
 
-### Registration of T2 map data
+<h3 id="registration-of-t2-map-data">Registration of T2 map data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Register the atlas information into T2 map space using the brain-extracted T2 map file, usually ending in `*SmoothMicoBet.nii.gz`:
 
@@ -544,7 +546,7 @@ python registration_T2MAP.py -i .../t2map/testDataSmoothMicoBet.nii.gz
 
 The script searches the corresponding `anat` folder for the anatomical reference data, registered annotations and transformation files. If a stroke mask is present, it can also be propagated into the T2 map workflow.
 
-### Processing of T2 map data
+<h3 id="processing-of-t2-map-data">Processing of T2 map data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Extract region-wise T2 map values with:
 
@@ -554,7 +556,7 @@ python t2map_data_extract.py -i .../t2map/testData_T2w_MAP.nii.gz
 
 The script uses the registered `*_AnnoSplit.nii.gz` and `*_AnnoSplit_parental.nii.gz` files and writes CSV files with mean T2 values and region sizes for each atlas region.
 
-### Preprocessing of DTI data
+<h3 id="preprocessing-of-dti-data">Preprocessing of DTI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 DTI processing should be performed after the anatomical `anat` data of the same subject and session have already been preprocessed and registered. The DTI registration uses the processed T2/anatomical data, the registered atlas annotations and the T2 transformation files as reference.
 
@@ -566,7 +568,7 @@ python preProcessing_DTI.py -i .../dwi/testData_dwi.nii.gz
 
 Several preprocessing options can be adjusted, for example the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Brain extraction can also be skipped with `--bet_skip`, in which case compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
 
-### Registration of DTI data
+<h3 id="registration-of-dti-data">Registration of DTI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The next step registers the atlas information from the anatomical T2 space into the DTI space. The script expects a brain-extracted DTI file, usually ending in `*Smooth*Bet.nii.gz`, and automatically searches the corresponding `anat` folder of the same subject/session for the T2 reference data.
 
@@ -591,7 +593,7 @@ The DTI registration creates DTI-space atlas files, like in the T2 registration 
 
 The NIfTI files are used as seed or ROI images for DSI Studio. The `.txt` files contain the corresponding atlas labels.
 
-### Processing of DTI data
+<h3 id="processing-of-dti-data">Processing of DTI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 Connectivity is calculated with DSI Studio:
 
@@ -621,7 +623,7 @@ python DTIdata_extract.py .../dwi/DSI_studio/<metric>.nii.gz .../dwi/<roi_file>.
 
 Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `iterativeRun.py` helper.
 
-### Preprocessing of fMRI data
+<h3 id="preprocessing-of-fmri-data">Preprocessing of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 rs-fMRI processing should be performed after the anatomical `anat` data of the same subject and session have already been preprocessed and registered. The fMRI registration uses the processed T2/anatomical data, the registered atlas annotations and the T2 transformation files as reference. If DTI data are available and provide better alignment, the fMRI registration can optionally use DTI as an intermediate reference.
 
@@ -631,7 +633,7 @@ The preprocessing step expects an EPI NIfTI file and performs the basic preparat
 python preProcessing_fMRI.py -i .../func/testData_EPI.nii.gz
 ```
 
-### Registration of fMRI data
+<h3 id="registration-of-fmri-data">Registration of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The next step registers the atlas information from anatomical T2 space into fMRI space. The script expects the preprocessed brain-extracted fMRI file, usually ending in `*SmoothBet.nii.gz`, and automatically searches the corresponding `anat` folder of the same subject/session for the T2 reference data.
 
@@ -659,7 +661,7 @@ The fMRI registration creates fMRI-space atlas files such as:
 
 Check the registration visually by overlaying the brain-extracted fMRI image with the registered annotation file, for example `*_AnnoSplit_parental.nii.gz`.
 
-### Processing of fMRI data
+<h3 id="processing-of-fmri-data">Processing of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The activity processing step performs regression, filtering and extraction of regional time series from the registered atlas regions. If physiological recording files or slice timing information are not available, the script proceeds without those correction steps.
 
@@ -679,7 +681,7 @@ The related matrices can be visualized with:
 python plotfMRI_mat.py -i .../func/regr/MasksTCsSplit*.mat
 ```
 
-### Peri-infarct ROI analysis
+<h3 id="peri-infarct-roi-analysis">Peri-infarct ROI analysis <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The peri-infarct ROI workflow creates custom regions around a stroke lesion and applies them to rs-fMRI and DTI analyses. It is a configuration-based workflow and should be run only after the anatomical, DTI and/or rs-fMRI data have already been processed and registered.
 
