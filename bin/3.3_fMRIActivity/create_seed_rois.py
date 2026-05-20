@@ -87,7 +87,6 @@ def startSeedPoint(in_labels,in_atlas):
     niiData = nib.Nifti1Image(rois, dataOrg.affine)
     hdrIn = niiData.header
     hdrIn.set_xyzt_units('mm')
-    scaledNiiData = nib.as_closest_canonical(niiData)
     nib.save(niiData, sPathROIs)
 
     print("Output:", sPathROIs)
@@ -265,7 +264,6 @@ if __name__ == '__main__':
     niiData = nib.Nifti1Image(rois, dataOrg.affine)
     hdrIn = niiData.header
     hdrIn.set_xyzt_units('mm')
-    scaledNiiData = nib.as_closest_canonical(niiData)
     nib.save(niiData, sPathROIs+ext_nifti)
 
     print("Output:", sPathROIs+ext_nifti)
