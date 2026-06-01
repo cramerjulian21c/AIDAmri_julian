@@ -293,6 +293,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
                     command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
+                    if cfg.get("bet4animal"):
+                        command += ' --use_bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -371,7 +373,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_average_b0"):
                         command += ' --average_b0'
 
-                    if cfg.get("dwi_skip_min"):
+                    if cfg.get("dwi_skip_min_projection"):
                         command += ' --skip_min_projection'
 
                     result = run_subprocess(command, dataFormat, step)
@@ -591,7 +593,7 @@ if __name__ == "__main__":
         help="Skip BET during DWI preprocessing"
     )
     dwi.add_argument(
-        "--dwi-skip-min",
+        "--dwi-skip-min-projection",
         action="store_true",
         help="Skip minimum intensity projection step"
     )
