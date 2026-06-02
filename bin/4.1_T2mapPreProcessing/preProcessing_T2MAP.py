@@ -11,94 +11,106 @@ University Hospital Cologne
 
 import nipype.interfaces.fsl as fsl
 import os, sys
-import nibabel as nii
+import nibabel as nib
 import numpy as np
 import applyMICO
-import cv2
-from pathlib import Path
 import shutil
-import subprocess
+#makes sure to import bet.py
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.bet import applyBET
 
+FATAL_LIP_HEADER_EXIT_CODE = 86
 
-
-def reset_orientation(input_file):
+def create_brkraw_backup(input_file):
 
     brkraw_dir = os.path.join(os.path.dirname(input_file), "brkraw")
     if os.path.exists(brkraw_dir):
-        return 
+        return
 
     os.mkdir(brkraw_dir)
     dst_path = os.path.join(brkraw_dir, os.path.basename(input_file))
 
     shutil.copyfile(input_file, dst_path)
 
-    data = nii.load(input_file)
-    raw_img = data.dataobj.get_unscaled()
+    data = nib.load(input_file)
+    raw_img = data.dataobj.get_unscaled().astype(np.float32)
 
-    raw_nii = nii.Nifti1Image(raw_img, data.affine)
-    nii.save(raw_nii, input_file)
+    hdr = data.header.copy()
+    hdr.set_data_dtype(np.float32)
+    set_default_xyzt_units_if_unknown(hdr)
 
-    delete_orient_command = f"fslorient -deleteorient {input_file}"
-    subprocess.run(delete_orient_command, shell=True)
-
-    # Befehl zum Festlegen der radiologischen Orientierung
-    forceradiological_command = f"fslorient -forceradiological {input_file}"
-    subprocess.run(forceradiological_command, shell=True)
-
-
-def applyBET(input_file: str, frac: float, radius: int, output_path: str) -> str:
-    """
-    Performs brain extraction via the FSL Brain Extraction Tool (BET). Requires an appropriate input file (input_file), the fractional intensity threshold (frac), the head radius (radius) and the output path (output_path).
-    """
-    # scale Nifti data by factor 10
-    data = nii.load(input_file)
-    imgTemp = data.get_fdata()
-    scale = np.eye(4)* 10
-    scale[3][3] = 1
-    imgTemp = np.flip(imgTemp, 2)
-
-    scaledNiiData = nii.Nifti1Image(imgTemp, data.affine * scale)
-    hdrIn = scaledNiiData.header
-    hdrIn.set_xyzt_units('mm')
-    scaledNiiData = nii.as_closest_canonical(scaledNiiData)
-
-    fsl_path = os.path.join(os.path.dirname(input_file),'fslScaleTemp.nii.gz')
-    nii.save(scaledNiiData, fsl_path)
-
-    # extract brain
-    output_file = os.path.join(output_path, os.path.basename(input_file).split('.')[0] + 'Bet.nii.gz')
-    myBet = fsl.BET(in_file=fsl_path, out_file=output_file,frac=frac,radius=radius,robust=True, mask = True)
-    myBet.run()
-    os.remove(fsl_path)
+    raw_nii = nib.Nifti1Image(raw_img, data.affine, header=hdr)
+    raw_nii.set_qform(data.affine, code=1)
+    raw_nii.set_sform(data.affine, code=1)
+    nib.save(raw_nii, input_file)
 
 
-    # unscale result data by factor 10ˆ(-1)
-    dataOut = nii.load(output_file)
-    imgOut = dataOut.get_fdata()
-    scale = np.eye(4)/ 10
-    scale[3][3] = 1
+def header_check(input_file):
+    img = nib.load(input_file)
+    axcodes = nib.aff2axcodes(img.affine)
 
-    unscaledNiiData = nii.Nifti1Image(imgOut, dataOut.affine * scale)
-    hdrOut = unscaledNiiData.header
-    hdrOut.set_xyzt_units('mm')
-    nii.save(unscaledNiiData, output_file)
+    if axcodes != ("L", "I", "P"):
+        print(
+            f"Fatal header check failure: expected LIP orientation, found {axcodes} in {input_file}",
+            file=sys.stderr,
+        )
+        sys.exit(FATAL_LIP_HEADER_EXIT_CODE)
 
-    return output_file
+    data = img.get_fdata(dtype=np.float32)
+
+    out = nib.Nifti1Image(data, img.affine, header=img.header.copy())
+    out.set_qform(img.affine, code=1)
+    out.set_sform(img.affine, code=1)
+
+    hdr = out.header
+    hdr.set_data_dtype(np.float32)
+    set_default_xyzt_units_if_unknown(hdr)
+
+    nib.save(out, input_file)
+    return input_file
+
+def set_default_xyzt_units_if_unknown(target):
+    if isinstance(target, str):
+        img = nib.load(target)
+        hdr = img.header
+        set_default_xyzt_units_if_unknown(hdr)
+        nib.save(img, target)
+        return target
+
+    if hasattr(target, "get_xyzt_units") and hasattr(target, "set_xyzt_units"):
+        space_unit, time_unit = target.get_xyzt_units()
+        if not space_unit or space_unit.lower() == "unknown":
+            space_unit = "mm"
+        if not time_unit or time_unit.lower() == "unknown":
+            time_unit = "sec"
+
+        target.set_xyzt_units(space_unit, time_unit)
+        return target
+
+    raise TypeError("Expected a NIfTI file path or nibabel header object")
+
+
+def set_xform_codes_to_one(input_file):
+    img = nib.load(input_file)
+    img.set_qform(img.affine, code=1)
+    img.set_sform(img.affine, code=1)
+    nib.save(img, input_file)
+    return input_file
 
 def smoothIMG(input_file, output_path):
     """
     Smoothes image via FSL. Only input and output has do be specified. Parameters are fixed to box shape and to the kernel size of 0.1 voxel.
     """
-    data = nii.load(input_file)
+    data = nib.load(input_file)
     vol = data.get_fdata()
     ImgSmooth = np.min(vol, 3)
 
-    unscaledNiiData = nii.Nifti1Image(ImgSmooth, data.affine)
+    unscaledNiiData = nib.Nifti1Image(ImgSmooth, data.affine)
     hdrOut = unscaledNiiData.header
     hdrOut.set_xyzt_units('mm')
     output_file = os.path.join(os.path.dirname(input_file),
                                os.path.basename(input_file).split('.')[0] + 'DN.nii.gz')
-    nii.save(unscaledNiiData, output_file)
+    nib.save(unscaledNiiData, output_file)
     input_file = output_file
     output_file = os.path.join(output_path, os.path.basename(input_file).split('.')[0] + 'Smooth.nii.gz')
     myGauss =  fsl.SpatialFilter(
@@ -137,8 +149,10 @@ if __name__ == "__main__":
 
     parser.add_argument('-f', '--frac', help='Fractional intensity threshold - default=0.3, smaller values give larger brain outline estimates', nargs='?', type=float,default=0.3)
     parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
-    parser.add_argument('-g', '--vertical_gradient', help='Vertical gradient in fractional intensity threshold - default=0.0, positive values give larger brain outlines at bottom and smaller brain outlines at top', nargs='?',
+    parser.add_argument('-g', '--horizontal_gradient', help='Horizontal gradient in fractional intensity threshold - default=0.0, positive values give larger brain outlines at bottom and smaller brain outlines at top', nargs='?',
                         type=float,default=0.0)
+    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
     # set parameters
@@ -147,23 +161,23 @@ if __name__ == "__main__":
         input_file = args.input
 
     if not os.path.exists(input_file):
-        sys.exit("Error: '%s' is not an existing directory or file %s is not in directory." % (input_file, args.file,))
+        sys.exit(f"Error: input file does not exist: {input_file}")
 
     frac = args.frac
     radius = args.radius
-    vertical_gradient = args.vertical_gradient
+    horizontal_gradient = args.horizontal_gradient
     output_path = os.path.dirname(input_file)
     
-    print(f"Frac: {frac} Radius: {radius} Gradient {vertical_gradient}")
+    print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
 
-    reset_orientation(input_file)
-    print("Orientation resetted to RAS")
+    create_brkraw_backup(input_file)
+    header_check(input_file)
     
     try:
         output_smooth = smoothIMG(input_file = input_file, output_path = output_path)
         print("Smoothing completed")
     except Exception as e:
-        print(f'Fehler in der Biasfieldcorrecttion\nFehlermeldung: {str(e)}')
+        print(f'Error in smoothing\nError message: {str(e)}')
         raise
 
     # intensity correction using non parametric bias field correction algorithm
@@ -171,25 +185,20 @@ if __name__ == "__main__":
         output_mico = applyMICO.run_MICO(output_smooth,output_path)
         print("Biasfieldcorrecttion was successful")
     except Exception as e:
-        print(f'Fehler in der Biasfieldcorrecttion\nFehlermeldung: {str(e)}')
+        print(f'Error in bias field correction\nError message: {str(e)}')
         raise
 
     # get rid of your skull         
-    outputBET = applyBET(input_file = output_mico, frac = frac, radius = radius, output_path = output_path)
+    outputBET = applyBET(
+        input_file=output_mico,
+        frac=frac,
+        radius=radius,
+        horizontal_gradient=horizontal_gradient,
+        output_path=output_path,
+        use_bet4animal=args.use_bet4animal,
+        center=args.center,
+    )
     print("Brainextraction was successful")
-   
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

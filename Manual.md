@@ -2,7 +2,7 @@
 
 **AIDAmri v3.0**
 
-Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt
+Julian Cramer, Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt
 
 **Status:** May 2026
 
@@ -481,11 +481,11 @@ The `getIncidenceSize.py` script creates the following output files in `.../anat
 *affectedRegions.nii.gz
 *labelCount.mat
 ```
-
-The labelled non-parental incidence lesion mask is stored in `.../anat/IncidenceData`:
+Please note the `*affectedRegions.nii.gz` is in Allen template space, not in the original T2 space. `*affectedRegions.csv` and `*labelCount.mat` contain the names and sizes of the affected atlas regions as well as the total stroke volume.
+The labelled non-parental incidence lesion mask (in Allen template space) is stored in `.../anat/IncidenceData`:
 
 ```text
-*IncidenceData_Anno_lesion_mask.nii.gz
+*IncidenceData_Lesion_mask_Anno.nii.gz
 ```
 
 The `getIncidenceSize_par.py` script creates the following output files in `.../anat/affected_Regions`:
@@ -496,10 +496,12 @@ The `getIncidenceSize_par.py` script creates the following output files in `.../
 *labelCount_par.mat
 ```
 
-The labelled parental incidence lesion mask is stored in `.../anat/IncidenceData`:
+The files contain the same type of information as the non-parental output files, but the affected regions are summarized using the parental atlas labels instead of the detailed atlas. 
+
+The labelled parental incidence lesion mask (in Allen template space) is stored in `.../anat/IncidenceData`:
 
 ```text
-*IncidenceData_Anno_parental_lesion_mask.nii.gz
+*IncidenceData_Lesion_mask_Anno_parental.nii.gz
 ```
 
 <h3 id="processing-of-roi-stroke-mask-data">Processing of ROI stroke mask data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>

@@ -109,11 +109,9 @@ def calculate_stroke_overlap(brain_file, annotation_file, ara_template_file, str
     incidence_data_dir = os.path.dirname(incidence_lesion_mask_file)
     incidence_data_name = os.path.basename(incidence_lesion_mask_file)
     incidence_input_suffix = 'IncidenceData_Lesion_mask.nii.gz'
-    incidence_output_suffix = 'IncidenceData_Anno_lesion_mask.nii.gz'
     if not incidence_data_name.endswith(incidence_input_suffix):
         sys.exit("Error: Incidence lesion mask filename must end with '%s'." % (incidence_input_suffix,))
-    incidence_name_prefix = incidence_data_name[:-len(incidence_input_suffix)]
-    output_name = incidence_name_prefix + incidence_output_suffix
+    output_name = incidence_data_name[:-len('.nii.gz')] + '_Anno.nii.gz'
     output_file = os.path.join(incidence_data_dir, output_name)
     nii.save(labelled_incidence_lesion_img, output_file)
 

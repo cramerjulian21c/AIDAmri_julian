@@ -14,14 +14,10 @@ Example:
 python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 """
 
-import glob
 import os
 import fnmatch
-import shutil
 from pathlib import Path
-import nibabel as nii
 import concurrent.futures
-import functools
 import subprocess
 from tqdm import tqdm
 import multiprocessing
@@ -261,6 +257,12 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*EPI.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
+                    if cfg.get("func_bias_method") is not None:
+                        command += f' -b {cfg["func_bias_method"]}'
+                    if cfg.get("func_bet_skip"):
+                        command += ' --bet_skip'
+                    if cfg.get("bet4animal"):
+                        command += ' --use_bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -271,14 +273,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '2.3_fMRIPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*SmoothBet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Smooth*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *SmoothBet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
                     logging.error(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -287,6 +289,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
                     command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
+                    if cfg.get("bet4animal"):
+                        command += ' --use_bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -297,6 +301,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
+                    if cfg.get("bet4animal"):
+                        command += ' --use_bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -307,14 +313,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*SmoothMicoBet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*SmoothMico*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_T2MAP.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *SmoothMicoBet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *SmoothMico*Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -365,7 +371,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_average_b0"):
                         command += ' --average_b0'
 
-                    if cfg.get("dwi_skip_min"):
+                    if cfg.get("dwi_skip_min_projection"):
                         command += ' --skip_min_projection'
 
                     result = run_subprocess(command, dataFormat, step)
@@ -585,7 +591,7 @@ if __name__ == "__main__":
         help="Skip BET during DWI preprocessing"
     )
     dwi.add_argument(
-        "--dwi-skip-min",
+        "--dwi-skip-min-projection",
         action="store_true",
         help="Skip minimum intensity projection step"
     )
@@ -611,6 +617,24 @@ if __name__ == "__main__":
         default=None,
         help="Bias field correction for DWI: none, MICO or ANTs (default: None)"
     )
+
+    # ============================================================
+    # fMRI PREPROCESSING (preProcessing_fMRI.py)
+    # ============================================================
+    func = parser.add_argument_group("fMRI preprocessing (preProcessing_fMRI.py)")
+    func.add_argument(
+        "--func-bias-method",
+        choices=["none", "ants"],
+        type=str.lower,
+        default=None,
+        help="Bias field correction for fMRI: none or ANTs (default: None)"
+    )
+    func.add_argument(
+        "--func-bet-skip",
+        action="store_true",
+        help="Skip BET during fMRI preprocessing"
+    )
+
     # ============================================================
     # BET / ANIMAL-SPECIFIC
     # ============================================================
