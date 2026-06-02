@@ -14,14 +14,10 @@ Example:
 python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 """
 
-import glob
 import os
 import fnmatch
-import shutil
 from pathlib import Path
-import nibabel as nii
 import concurrent.futures
-import functools
 import subprocess
 from tqdm import tqdm
 import multiprocessing
@@ -305,6 +301,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
+                    if cfg.get("bet4animal"):
+                        command += ' --use_bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -315,14 +313,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*SmoothMicoBet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*SmoothMico*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_T2MAP.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *SmoothMicoBet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *SmoothMico*Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
