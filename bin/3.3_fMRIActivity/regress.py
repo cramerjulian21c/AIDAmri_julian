@@ -14,7 +14,9 @@ import numpy as np
 import nipype.interfaces.fsl as fsl
 import glob
 import shutil
-from pathlib import Path
+#makes sure to import bet.py
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.bet import applyBET
 
 
 def scaleBy10(input_path,inv):
@@ -27,6 +29,8 @@ def scaleBy10(input_path,inv):
 
     out_img = nii.Nifti1Image(imgTemp, aff, header=img.header)
     out_img.header.set_xyzt_units('mm')
+    out_img.set_qform(aff, code=1)
+    out_img.set_sform(aff, code=1)
 
     if not inv:
         fslPath = os.path.join(
@@ -38,6 +42,7 @@ def scaleBy10(input_path,inv):
     else:
         nii.save(out_img, input_path)
         return input_path
+
 
 def findRegData(path):
     regMR_list = []
@@ -212,25 +217,10 @@ def filterFSL(input_file,highpass,tempMean):
     return outputSFRGR
 
 
-def applyBET(input_file,frac,radius,vertical_gradient):
-
-    # scale Nifti data by factor 10
-    fslPath = scaleBy10(input_file,inv=False)
-    # extract brain
-    output_file = os.path.join(os.path.dirname(input_file),os.path.basename(input_file).split('.')[0]) + 'Bet.nii.gz'
-    maskFile = os.path.join(os.path.dirname(input_file), os.path.basename(input_file).split('.')[0]) + 'Bet_mask.nii.gz'
-    myBet = fsl.BET(in_file=fslPath, out_file=output_file,frac=frac,radius=radius,
-                    vertical_gradient=vertical_gradient,robust=True, mask = True)
-    print(myBet.cmdline)
-    myBet.run()
-    os.remove(fslPath)
-    # unscale result data by factor 10ˆ(-1)
-    output_file = scaleBy10(output_file,inv=True)
-    maskFile = scaleBy10(maskFile,inv=True)
-    return output_file,maskFile
-
 #adjust default parameters if needed
-def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False, slice_order=None, costum_timings=None):
+def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
+                    slice_order=None, costum_timings=None,
+                    use_bet4animal=False, center=None):
     # generate folder regr images
     
     origin_Path = os.path.dirname(os.path.dirname(input_File))
@@ -257,7 +247,15 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False, s
 
     # get mean
     meanRegr_File = getMean(regr_FileReal,'mean2')
-    file_nameEPI_BET, mask_file = applyBET(meanRegr_File, frac=0.35, radius=45, vertical_gradient=0.1)
+    file_nameEPI_BET, mask_file = applyBET(
+        meanRegr_File,
+        frac=0.35,
+        radius=45,
+        horizontal_gradient=0.1,
+        use_bet4animal=use_bet4animal,
+        center=center,
+        return_mask=True
+    )
     os.remove(meanRegr_File)
     regr_File = applyMask(regr_FileReal,mask_file,'')
 
@@ -317,6 +315,8 @@ if __name__ == "__main__":
 
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i','--input', help='Path to input file',required=True)
+    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
 
@@ -325,4 +325,8 @@ if __name__ == "__main__":
     if not os.path.exists(input):
         sys.exit("Error: '%s' does not exist." % (input,))
 
-    result = startRegression(input)
+    result = startRegression(
+        input,
+        use_bet4animal=args.use_bet4animal,
+        center=args.center
+    )
