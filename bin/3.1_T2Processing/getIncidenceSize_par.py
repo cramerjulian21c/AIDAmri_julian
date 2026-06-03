@@ -187,8 +187,8 @@ def calculate_parental_stroke_overlap(brain_file, parental_annotation_file, ara_
     csv_file = open(os.path.join(affected_regions_dir, affected_regions_prefix + 'affectedRegions_Parental.csv'), 'w', newline='')
     csv_writer = csv.writer(csv_file)
     strokePercentOfBrain = (strokeVolumeInCubicMM / brainVolumeInCubicMM) * 100
-    csv_writer.writerow(['Label_id', 'Brain region', 'Affected region percentage', 'Region stroke volume_mm3', '',
-                         'Stroke percent of brain', 'Total stroke volume_mm3'])
+    csv_writer.writerow(['Label_id', 'Brain region', 'Affected region percentage [%]', 'Region stroke volume [mm3]', '',
+                         'Stroke percent of brain [%]', 'Total stroke volume [mm3]'])
     affected_label_names_by_id = {}
     wrote_total_stroke_values = False
     for label_id in all_label_ids:
@@ -216,7 +216,7 @@ def calculate_parental_stroke_overlap(brain_file, parental_annotation_file, ara_
     regionStrokeVolumeMM3 = np.array([region_affected_voxels_by_label[int(label_id)] * strokeVoxelVolumeMM3
                                       for label_id in parental_label_ids])
     affected_label_names = [affected_label_names_by_id.get(int(label_id), "") for label_id in parental_label_ids]
-    parental_label_ids = np.stack((parental_label_ids, regionAffectPercent))
+    parental_label_ids = np.column_stack((parental_label_ids, regionAffectPercent))
     label_mat = {}
     label_mat['ABLAbelsIDsParental'] = parental_label_ids
     label_mat['ABANamesPar'] = affected_label_names
