@@ -98,7 +98,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
     timeout = 5400 #timeout (sec) for subprocess
     command_args = shlex.split(command)
 
-    inp = _get_arg_after(["-i", "--input", "--input_file"], command_args)
+    inp = _get_arg_after(["-i", "--input", "--input-file"], command_args)
     if inp is None:
         inp = next((a for a in reversed(command_args)
                     if a.endswith(".nii") or a.endswith(".nii.gz")), command_args[-1])
@@ -183,7 +183,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -b {cfg["t2_bias_method"]}'
 
                     if cfg.get("t2_bet_skip"):
-                        command += " --bet_skip"
+                        command += " --bet-skip"
 
                     # BET-Parameter
                     if cfg.get("t2_frac") is not None:
@@ -198,7 +198,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
 
                     # bet4animal
                     if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                        command += ' --use-bet4animal'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -260,9 +260,9 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
                     if cfg.get("func_bet_skip"):
-                        command += ' --bet_skip'
+                        command += ' --bet-skip'
                     if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                        command += ' --use-bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -290,7 +290,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
                     command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
                     if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                        command += ' --use-bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -302,7 +302,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
                     if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                        command += ' --use-bet4animal'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -363,16 +363,16 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
 
                     # Flags
                     if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                        command += ' --use-bet4animal'
 
                     if cfg.get("dwi_bet_skip"):
-                        command += ' --bet_skip'
+                        command += ' --bet-skip'
 
                     if cfg.get("dwi_average_b0"):
-                        command += ' --average_b0'
+                        command += ' --average-b0'
 
                     if cfg.get("dwi_skip_min_projection"):
-                        command += ' --skip_min_projection'
+                        command += ' --skip-min-projection'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -421,12 +421,12 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         f'-b {_quote(b_table)} '
                         f'-t {track_param_args} -r {_quote(recon_method)} '
                         f'-v {_quote(vivo)} -m {_quote(make_iso)} '
-                        f'--thread_count {thread_count}'
+                        f'--thread-count {thread_count}'
                     )
                     if legacy:
                         cli_str += ' -l'
                     if skip_motion_correction:
-                        cli_str += ' --skip_motion_correction'
+                        cli_str += ' --skip-motion-correction'
                     if optional:
                         cli_str += ' -o ' + ' '.join(_quote(item) for item in optional)
 

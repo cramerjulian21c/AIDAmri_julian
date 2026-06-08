@@ -189,8 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
     parser.add_argument(
         '-g',
-        '--horizontal_gradient',
-        dest='horizontal_gradient',
+        '--horizontal-gradient',
         help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         nargs='?',
         type=float,
@@ -204,19 +203,19 @@ if __name__ == "__main__":
         default=None
     )
     parser.add_argument(
-        '--use_bet4animal',
+        '--use-bet4animal',
         help='Use BET for animal brains. If not set it uses FSL BET.',
         action='store_true'
     )
     parser.add_argument(
-        '--bet_skip',
+        '--bet-skip',
         help='Skip BET during fMRI preprocessing (still creates *Bet.nii.gz and *_mask.nii.gz for pipeline compatibility). '
              'If not set it uses FSL BET (modified human version)',
         action='store_true'
     )
     parser.add_argument(
         '-b',
-        '--bias_method',
+        '--bias-method',
         help='Biasfield correction method - default=None, other options are "ants" or "none"',
         choices=["none", "ants"],
         type=str.lower,

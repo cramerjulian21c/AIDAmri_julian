@@ -277,10 +277,10 @@ if __name__ == "__main__":
     requiredNamed.add_argument('-i', '--input', help='Path to the RAW data of rsfMRI NIfTI file', required=True)
 
     parser.add_argument('-t', '--TR', default=TR, help='Current TR value')
-    parser.add_argument('-c', '--cutOff_sec', default=cutOff_sec, help='High-pass filter cutoff sec')
+    parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, help='High-pass filter cutoff sec')
     parser.add_argument('-f', '--FWHM', default=FWHM, help='Full width at half maximum')
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
-    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument('--use-bet4animal', action='store_true', help='Use BET tuned for animal brains')
     parser.add_argument('-ctr', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
 
     args = parser.parse_args()

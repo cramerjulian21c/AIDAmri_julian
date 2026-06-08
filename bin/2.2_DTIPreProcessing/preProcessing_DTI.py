@@ -282,7 +282,7 @@ if __name__ == "__main__":
     requiredNamed = parser.add_argument_group('Required named arguments')
     requiredNamed.add_argument(
         '-i',
-        '--input_file',
+        '--input-file',
         help='Path to the raw NIfTI DTI file',
         required=True,
     )
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-g',
-        '--horizontal_gradient',
+        '--horizontal-gradient',
         help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         type=float,
         default=0.0,
@@ -316,7 +316,7 @@ if __name__ == "__main__":
         default=None
     )
     parser.add_argument(
-        '--bet_skip',
+        '--bet-skip',
         help='Skip BET during DTI preprocessing (still creates *Bet.nii.gz and *_mask.nii.gz for pipeline compatibility). '
              'If not set it uses FSL BET (modified human version)',
         action='store_true'
@@ -324,7 +324,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         '-b',
-        '--bias_method',
+        '--bias-method',
         help='Biasfield correction method - default="mico", other options are "ants" or "none"',
         choices = ["none", "mico", "ants"],
         type=str.lower,
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--use_bet4animal',
+        '--use-bet4animal',
         help='Use BET for animal brains. '
              'If not set it use FSL (modified human version)',
         action='store_true'
@@ -348,12 +348,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--average_b0',
+        '--average-b0',
         help='Average the b0 volumes',
         action='store_true'
     )
     parser.add_argument(
-        '--skip_min_projection',
+        '--skip-min-projection',
         help='Skip creation of the 3D minimum-projection reference image before smoothing',
         action='store_true'
     )

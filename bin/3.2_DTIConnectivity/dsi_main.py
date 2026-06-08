@@ -60,7 +60,7 @@ def normalize_track_params(values):
         return values[0]
     if len(values) != 8:
         raise argparse.ArgumentTypeError(
-            "-t/--track_params expects one preset name or exactly 8 custom values: "
+            "-t/--track-params expects one preset name or exactly 8 custom values: "
             "tract_count step_size turning_angle check_ending fa_threshold smoothing min_length max_length"
         )
     return values
@@ -81,17 +81,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Get connectivity of DTI dataset')
     requiredNamed = parser.add_argument_group('Required named arguments')
     requiredNamed.add_argument('-i',
-                               '--file_in',
+                               '--file-in',
                                help = 'path to the raw NIfTI DTI file (ends with *dwi.nii.gz)',
                                required=True
                                )
     parser.add_argument('-b',
-                        '--b_table',
+                        '--b-table',
                         default='auto',  # Default to 'auto' for automatic selection
                         help='Specify the diffusion gradient source: "auto" requires matching .bval/.bvec files. Any other value is treated as a b-table path.'
                         )
     parser.add_argument('-r',
-                        '--recon_method',
+                        '--recon-method',
                         default='dti',
                         type=str.lower,
                         choices=['dti', 'gqi'],
@@ -107,19 +107,19 @@ if __name__ == '__main__':
                         required=False
                        )
     parser.add_argument('-m',
-                        '--make_isotropic',
+                        '--make-isotropic',
                         default='0',
                         help='Specify an isotropic voxel size in mm for resampling. Default 0 = no resampling. "auto" uses nibabel to read the NIFTI header for the minimum voxel size',
                         required=False
                        )
     parser.add_argument('-t',
-                        '--track_params',
+                        '--track-params',
                         nargs='+',
                         default=['default'],
                         help='Specify tracking parameters from a pre-defined set ("aida_optimized", "rat", or "mouse") or as a list of values for tract_count, step_size, turning_angle, check_ending, fa_threshold, smoothing, min_length, and max_length.',
                         required=False
                        )
-    parser.add_argument('--thread_count',
+    parser.add_argument('--thread-count',
                         type=positive_int,
                         default=1,
                         help='Specify the number of threads to use for fiber tracking. Default is 1.',
@@ -130,7 +130,7 @@ if __name__ == '__main__':
                         help='Legacy file types for DSI-Studio releases before 2024. Default is False (uses new more storage-efficient ".sz" and ".fz" file types)',
                         action = 'store_true'
                         )
-    parser.add_argument('--skip_motion_correction',
+    parser.add_argument('--skip-motion-correction',
                         action='store_true',
                         help='Specify whether to skip motion correction. Default is False (perform motion correction). Set to "true" to skip motion correction.',
                         required=False
@@ -155,7 +155,7 @@ if __name__ == '__main__':
             make_isotropic = float(args.make_isotropic)
         except ValueError:
             parser.error(
-                f'Invalid --make_isotropic value "{args.make_isotropic}". '
+                f'Invalid --make-isotropic value "{args.make_isotropic}". '
                 'Use 0, "auto", or a voxel size in mm, e.g. 0.2.'
             )
 
