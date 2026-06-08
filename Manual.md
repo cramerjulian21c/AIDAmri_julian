@@ -568,7 +568,7 @@ The DTI preprocessing step prepares the diffusion data for registration and trac
 python preProcessing_DTI.py -i .../dwi/testData_dwi.nii.gz
 ```
 
-Several preprocessing options can be adjusted, for example the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Brain extraction can also be skipped with `--bet_skip`, in which case compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
+Several preprocessing options can be adjusted, for example the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Brain extraction can also be skipped with `--bet-skip`, in which case compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
 
 <h3 id="registration-of-dti-data">Registration of DTI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
@@ -603,7 +603,7 @@ Connectivity is calculated with DSI Studio:
 python dsi_main.py -i .../dwi/testData_dwi.nii.gz
 ```
 
-By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread_count`).
+By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread-count`).
 
 The output is stored in the DTI folder. Diffusion metric maps such as FA, AD, RD and MD are stored in `.../dwi/DSI_studio`.
 
