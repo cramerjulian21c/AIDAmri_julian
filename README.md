@@ -243,6 +243,7 @@ or
 
 join our Open Office Hour - each Thursday 3:00 pm (UTC+2) [![Zoom](https://img.shields.io/badge/Zoom-2D8CFF?style=for-the-badge&logo=zoom&logoColor=white)](https://uni-frankfurt.zoom-x.de/j/63112745009?pwd=JBTjMVbuaTw9cZvFnppTwCPjGdQEyx.1)
 
+Please note that the Open Office Hour may not take place on public holidays in Germany.
 
 For all other inquiries: Markus Aswendt (aswendtATmed.uni-frankfurt.de)
 
