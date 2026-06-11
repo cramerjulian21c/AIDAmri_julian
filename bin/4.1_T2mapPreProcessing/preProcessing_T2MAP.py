@@ -99,17 +99,33 @@ def set_xform_codes_to_one(input_file):
 
 def smoothIMG(input_file, output_path):
     """
-    Smoothes image via FSL. Only input and output has do be specified. Parameters are fixed to box shape and to the kernel size of 0.1 voxel.
+    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
+    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy.
     """
     data = nib.load(input_file)
     vol = data.get_fdata()
-    ImgSmooth = np.min(vol, 3)
-
-    unscaledNiiData = nib.Nifti1Image(ImgSmooth, data.affine)
+    if vol.ndim == 4:
+        img_smooth = np.min(vol, axis=3).astype(np.float32)
+    elif vol.ndim == 3:
+        img_smooth = vol.astype(np.float32)
+    else:
+        raise ValueError(f"Unsupported image dimensionality: {vol.ndim}")
+    unscaledNiiData = nib.Nifti1Image(img_smooth, data.affine)
+    unscaledNiiData.set_qform(data.affine, code=1)
+    unscaledNiiData.set_sform(data.affine, code=1)
     hdrOut = unscaledNiiData.header
-    hdrOut.set_xyzt_units('mm')
+    hdrOut.set_data_dtype(np.float32)
+    space_unit, time_unit = hdrOut.get_xyzt_units()
+
+    if not space_unit or space_unit.lower() == "unknown":
+        space_unit = "mm"
+    if not time_unit or time_unit.lower() == "unknown":
+        time_unit = "sec"
+    hdrOut.set_xyzt_units(space_unit, time_unit)
     output_file = os.path.join(os.path.dirname(input_file),
-                               os.path.basename(input_file).split('.')[0] + 'DN.nii.gz')
+                               os.path.basename(input_file).split('.')[0] + '_MP.nii.gz')
     nib.save(unscaledNiiData, output_file)
     input_file = output_file
     output_file = os.path.join(output_path, os.path.basename(input_file).split('.')[0] + 'Smooth.nii.gz')
@@ -121,6 +137,12 @@ def smoothIMG(input_file, output_path):
         kernel_size = 0.1
     )
     myGauss.run()
+
+    img = nib.load(output_file)
+    hdr = img.header
+    hdr["pixdim"][4:8] = 1
+    nib.save(img, output_file)
+
     return output_file
 
 def thresh(input_file, output_path):
