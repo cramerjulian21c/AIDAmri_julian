@@ -311,7 +311,7 @@ All program examples are listed only with the mandatory input parameters. For mo
 python <command> -h
 ```
 
-The command-line examples use the identifier `testData<No.>.nii.gz` and can be identically applied to other data. The test data are freely available at DOI `10.12751/g-node.70e11f`.
+The command-line examples use the identifier `testData<No.>.nii.gz` and can be identically applied to other data. The test data are freely [**here**](https://next.hessenbox.de/index.php/s/3tRzc5rCC8GWCAc).
 
 After a successful download, you can choose either to process single files manually or automate the processing for the whole dataset. In both cases, processing includes file conversion from the raw Bruker format into NIfTI format, several preprocessing steps and registration with the Allen Brain Reference Atlas. The functions in `/bin` are named according to the MRI sequence to be processed, such as `T2`, `DTI` and `fMRI`.
 
