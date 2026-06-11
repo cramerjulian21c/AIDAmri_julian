@@ -177,6 +177,57 @@ def log_command_output(label, output, returncode, warning_tokens=None, error_tok
         "error_lines": error_lines,
     }
 
+
+def extract_failed_scan_ids(issue_lines):
+    scan_ids = []
+    for line in issue_lines:
+        match = re.search(r"Conversion failed:\s*ScanID:(\d+)", line)
+        if match:
+            scan_ids.append(int(match.group(1)))
+    return scan_ids
+
+
+def get_dataset_scan_ids(input_dir):
+    dataset_csv_candidates = glob.glob(os.path.join(input_dir, "dataset*.csv"))
+    if not dataset_csv_candidates:
+        return set()
+    df = pd.read_csv(dataset_csv_candidates[0])
+    if "ScanID" not in df.columns:
+        return set()
+    return set(pd.to_numeric(df["ScanID"], errors="coerce").dropna().astype(int))
+
+
+def classify_nifti_conversion_results(results, relevant_scan_ids):
+    real_failures = []
+    relevant_issue_count = 0
+    ignored_issue_count = 0
+
+    for result in results:
+        if result["status"] == "failed":
+            real_failures.append(result)
+            continue
+
+        failed_scan_ids = extract_failed_scan_ids(result.get("issue_lines", []))
+        relevant_failed_ids = [scan_id for scan_id in failed_scan_ids if scan_id in relevant_scan_ids]
+        ignored_failed_ids = [scan_id for scan_id in failed_scan_ids if scan_id not in relevant_scan_ids]
+        relevant_issue_count += len(relevant_failed_ids)
+        ignored_issue_count += len(ignored_failed_ids)
+
+        if relevant_failed_ids:
+            logging.warning(
+                "NIfTI conversion failed for relevant dataset scan IDs %s in %s",
+                relevant_failed_ids,
+                result.get("dataset"),
+            )
+        if ignored_failed_ids:
+            logging.info(
+                "Ignoring NIfTI conversion failures for non-dataset/support scan IDs %s in %s",
+                ignored_failed_ids,
+                result.get("dataset"),
+            )
+
+    return real_failures, relevant_issue_count, ignored_issue_count
+
 def bids_convert(input_dir, output_dir):
     ## rearrange proc data in BIDS-format    
     temp_dir = os.path.join(input_dir,"temp")   
@@ -558,19 +609,23 @@ if __name__ == "__main__":
     print("Paravision to nifti conversion running \33[5m...\33[0m (wait!)")
     #nifti_convert(output_dir, list_of_data)
     nifti_results = nifti_convert(pathToRawData, list_of_data, output_dir)
-    nifti_failed = [r for r in nifti_results if r["status"] == "failed"]
-    nifti_with_issues = [r for r in nifti_results if r["status"] == "completed_with_issues"]
+    relevant_scan_ids = get_dataset_scan_ids(pathToRawData)
+    nifti_failed, relevant_nifti_issue_count, ignored_nifti_issue_count = classify_nifti_conversion_results(
+        nifti_results,
+        relevant_scan_ids,
+    )
     if nifti_failed:
         print(f"\rNifti conversion FAILED/PARTIAL: {len(nifti_results) - len(nifti_failed)} dataset(s) completed, {len(nifti_failed)} failed.                  ")
         terminal_issues.append(f"NIfTI conversion failed for {len(nifti_failed)} dataset(s)")
-    elif nifti_with_issues:
-        issue_count = sum(len(r["issue_lines"]) for r in nifti_with_issues)
-        print(f"\rNifti conversion COMPLETED WITH WARNINGS: {issue_count} scan conversion issue(s) detected.                  ")
-        terminal_issues.append(f"NIfTI conversion reported {issue_count} scan conversion issue(s)")
+    elif relevant_nifti_issue_count > 0:
+        print(f"\rNifti conversion COMPLETED WITH WARNINGS: {relevant_nifti_issue_count} relevant scan conversion issue(s) detected.                  ")
+        terminal_issues.append(f"NIfTI conversion reported {relevant_nifti_issue_count} relevant scan conversion issue(s)")
+    elif ignored_nifti_issue_count > 0:
+        print(f"\rNifti conversion COMPLETED: relevant BIDS scans converted; ignored {ignored_nifti_issue_count} non-dataset/support scan conversion failure(s).                  ")
     else:
         print("\rNifti conversion \033[0;30;42m COMPLETED \33[0m                  ")
-    if nifti_failed or nifti_with_issues:
-        logging.warning("NIfTI conversion issue summary: %s", nifti_failed + nifti_with_issues)
+    if nifti_failed or relevant_nifti_issue_count > 0 or ignored_nifti_issue_count > 0:
+        logging.warning("NIfTI conversion issue summary: %s", nifti_results)
     
     # convert data into BIDS format
     print("BIDS conversion running \33[5m...\33[0m (wait!)")
