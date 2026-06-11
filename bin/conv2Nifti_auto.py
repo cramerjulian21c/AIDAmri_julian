@@ -16,6 +16,7 @@ python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data
 """
 
 import os
+import sys
 import csv
 import json
 import pandas as pd
@@ -32,6 +33,8 @@ import shlex
 import logging
 import shutil
 import openpyxl
+import contextlib
+import io
 
 
 def create_slice_timings(method_file, scanid, out_file):
@@ -132,8 +135,47 @@ def get_visu_pars(path):
                 if "VisuAcqEchoTime=" in line:    
                     if lines[idx+1]:
                         echotimes = [float(s) for s in re.findall(r'\d+', lines[idx+1])]
-                        echotimes = np.array(echotimes)
+                    echotimes = np.array(echotimes)
     return echotimes
+
+
+def extract_command_lines(output, tokens):
+    return [
+        line.strip()
+        for line in output.splitlines()
+        if any(token in line for token in tokens)
+    ]
+
+
+def log_command_output(label, output, returncode, warning_tokens=None, error_tokens=None):
+    warning_tokens = warning_tokens or ["Warning", "FutureWarning", "UserWarning"]
+    error_tokens = error_tokens or ["Traceback", "Error", "FAILED", "Failed"]
+    warning_lines = extract_command_lines(output, warning_tokens)
+    error_lines = extract_command_lines(output, error_tokens)
+    message = f"{label}:\n{output}"
+
+    if returncode != 0 or error_lines:
+        logging.warning(message)
+    elif warning_lines:
+        logging.warning(message)
+    else:
+        logging.info(message)
+
+    if returncode != 0:
+        status = "failed"
+    elif error_lines:
+        status = "completed_with_issues"
+    elif warning_lines:
+        status = "completed_with_warnings"
+    else:
+        status = "completed"
+
+    return {
+        "status": status,
+        "returncode": returncode,
+        "warning_lines": warning_lines,
+        "error_lines": error_lines,
+    }
 
 def bids_convert(input_dir, output_dir):
     ## rearrange proc data in BIDS-format    
@@ -142,10 +184,11 @@ def bids_convert(input_dir, output_dir):
     command_args = shlex.split(command)
     
     os.chdir(input_dir)
+    command_results = []
     
     try:
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        logging.info(f"Output bids helper:\n{result.stdout}")
+        command_results.append(log_command_output("Output bids helper", result.stdout, result.returncode))
     except Exception as e:
         logging.error(f'Fehler bei der Ausführung des Befehls: {command_args}\nFehlermeldung: {str(e)}')
         raise
@@ -167,12 +210,13 @@ def bids_convert(input_dir, output_dir):
     command_args = shlex.split(command)
     try:
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        logging.info(f"Output bids convert:\n{result.stdout}")
+        command_results.append(log_command_output("Output bids convert", result.stdout, result.returncode))
     except Exception as e:
         logging.error(f'Fehler bei der Ausführung des Befehls: {command_args}\nFehlermeldung: {str(e)}')
         raise
 
     shutil.rmtree(temp_dir)
+    return command_results
 
 
 def nifti_convert(input_dir, raw_data_list, output_dir):
@@ -182,14 +226,26 @@ def nifti_convert(input_dir, raw_data_list, output_dir):
     temp_dir = os.path.join(input_dir,"temp")
     if not os.path.exists(temp_dir):
         os.mkdir(temp_dir)
-    os.chdir(temp_dir)    
-        
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        
-        futures = [executor.submit(brkraw_tonii, path) for path in raw_data_list]
-        concurrent.futures.wait(futures)
-    
-    os.chdir(aidamri_dir)
+    os.chdir(temp_dir)
+    conversion_results = []
+    try:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = {executor.submit(brkraw_tonii, path): path for path in raw_data_list}
+            for future in concurrent.futures.as_completed(futures):
+                input_path = futures[future]
+                try:
+                    conversion_results.append(future.result())
+                except Exception as e:
+                    conversion_results.append({
+                        "dataset": os.path.basename(input_path),
+                        "status": "failed",
+                        "returncode": None,
+                        "issue_lines": [str(e)],
+                    })
+                    logging.error(f"NIfTI conversion failed for {input_path}: {e}")
+    finally:
+        os.chdir(aidamri_dir)
+    return conversion_results
         
 def brkraw_tonii(input_path):
     
@@ -197,7 +253,23 @@ def brkraw_tonii(input_path):
     command_args = shlex.split(command)
     try:
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        logging.info(f"Output nifti conversion of dataset {os.path.basename(input_path)}:\n{result.stdout}")
+        issue_lines = [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if "Conversion failed" in line or "Traceback" in line
+        ]
+        log_message = f"Output nifti conversion of dataset {os.path.basename(input_path)}:\n{result.stdout}"
+        if result.returncode != 0 or issue_lines:
+            logging.warning(log_message)
+        else:
+            logging.info(log_message)
+        status = "failed" if result.returncode != 0 else "completed_with_issues" if issue_lines else "completed"
+        return {
+            "dataset": os.path.basename(input_path),
+            "status": status,
+            "returncode": result.returncode,
+            "issue_lines": issue_lines,
+        }
     except Exception as e:
         logging.error(f'Fehler bei der Ausführung des Befehls: {command_args}\nFehlermeldung: {str(e)}')
         raise
@@ -207,13 +279,21 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     
     sub = os.path.basename(os.path.dirname(mese_scan_ses))
     ses = os.path.basename(mese_scan_ses)
+    result = {
+        "session": mese_scan_ses,
+        "subject": sub,
+        "status": "skipped",
+        "reason": "",
+        "output_files": [],
+    }
 
     anat_data_path = os.path.join(mese_scan_ses, "anat", "*MESE.nii*")
     mese_data_paths = glob.glob(anat_data_path, recursive=True)
 
     #skip the subject if no MEMS files are found
     if not mese_data_paths:
-        return 1
+        result["reason"] = "no converted anat/*MESE.nii* files found"
+        return result
     
     # collect data of all individual MEMS files of one subject and session
     img_array_data = {}
@@ -255,6 +335,7 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     # get echotimes of scan
     echotimes = get_visu_pars(visu_pars_path)
 
+    map_created = False
     if len(echotimes) > 3:
         img_name = sub + "_" + ses + "_T2w_MAP.nii.gz"
         t2map_path = os.path.join(output_dir, sub, ses, "t2map", img_name)
@@ -269,6 +350,8 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
             raise
 
         correct_orientation(qform,sform,t2_mems_path,t2map_path)
+        result["output_files"].append(t2map_path)
+        map_created = True
 
     # generate transposed MEMS img for later registration
     org_mems_scan = nii.load(t2_mems_path)
@@ -288,6 +371,13 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     if not os.path.exists(os.path.join(output_dir, sub, ses, "t2map")):
         os.mkdir(os.path.join(output_dir, sub, ses, "t2map"))
     nii.save(transposed_copied_img, t2_mems_transposed_path)
+    result["output_files"].extend([t2_mems_path, t2_mems_transposed_path])
+    if map_created:
+        result["status"] = "created"
+    else:
+        result["status"] = "partial"
+        result["reason"] = "MEMS image created, but no T2w map was created because fewer than 4 echo times were found"
+    return result
 
 
 def correct_orientation(qform,sform, t2_mems_img, t2_map_img):
@@ -327,6 +417,80 @@ def fileCopy(list_of_data, input_path):
                 print(f"File '{filename}' moved to '{input_path}' successfully.")
             except Exception as e:
                 print(f"Error moving '{filename}' to '{input_path}': {str(e)}")
+
+
+def _count_files(pattern):
+    return len(glob.glob(pattern, recursive=True))
+
+
+def collect_output_counts(output_dir):
+    counts = {
+        "anat/T2w": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "anat", "*_T2w.nii.gz")),
+        "dwi": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "dwi", "*_dwi.nii.gz")),
+        "func/EPI": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "func", "*_EPI.nii.gz")),
+        "fmap/fieldmap": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "fmap", "*_fieldmap.nii.gz")),
+        "fmap/magnitude": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "fmap", "*_magnitude.nii.gz")),
+        "t2map/MEMS": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "t2map", "*MEMS.nii.gz")),
+        "t2map/T2w_MAP": _count_files(os.path.join(output_dir, "sub-*", "ses-*", "t2map", "*T2w_MAP.nii.gz")),
+    }
+    return counts
+
+
+def print_output_counts(output_dir, title="Detected output files"):
+    counts = collect_output_counts(output_dir)
+    print(f"{title}:")
+    for label, count in counts.items():
+        print(f" - {label}: {count}")
+    logging.info(f"{title}: {counts}")
+    return counts
+
+
+def _clean_values(values):
+    cleaned = []
+    for value in values:
+        if pd.isna(value):
+            continue
+        value = str(value).strip()
+        if value:
+            cleaned.append(value)
+    return sorted(set(cleaned))
+
+
+def describe_dataset_csv(df):
+    datatypes = _clean_values(df["DataType"]) if "DataType" in df.columns else []
+    modalities = _clean_values(df["modality"]) if "modality" in df.columns else []
+    datatype_text = ", ".join(datatypes) if datatypes else "none"
+    modality_text = ", ".join(modalities) if modalities else "none"
+    return datatype_text, modality_text
+
+
+def print_conversion_summary(output_dir, postprocess_status):
+    counts = collect_output_counts(output_dir)
+    print("\nSummary:")
+    print("Data type   Files   Status")
+    print(f"anat        {counts['anat/T2w']}       converted")
+    print(f"dwi         {counts['dwi']}       {postprocess_status.get('dwi', 'not checked')}")
+    print(f"func        {counts['func/EPI']}       {postprocess_status.get('func', 'not checked')}")
+    fmap_count = counts["fmap/fieldmap"] + counts["fmap/magnitude"]
+    print(f"fmap        {fmap_count}       converted")
+    t2map_count = counts["t2map/T2w_MAP"]
+    print(f"t2map       {t2map_count}       {postprocess_status.get('t2map', 'not checked')}")
+
+
+def run_with_logged_output(func, *args, log_prefix=None, **kwargs):
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+        result = func(*args, **kwargs)
+
+    stdout = stdout_buffer.getvalue().strip()
+    stderr = stderr_buffer.getvalue().strip()
+    prefix = f"{log_prefix}\n" if log_prefix else ""
+    if stdout:
+        logging.info("%s%s", prefix, stdout)
+    if stderr:
+        logging.warning("%s%s", prefix, stderr)
+    return result
 
 
 
@@ -369,7 +533,7 @@ if __name__ == "__main__":
      
     # Konfiguriere das Logging-Modul
     log_file_path = os.path.join(sourcedata_dir, "conv2nifti_log.txt")
-    logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(filename=log_file_path, filemode='w', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     # get list of raw data in input folder
     #list_of_raw = sorted([d for d in os.listdir(pathToRawData) if os.path.isdir(os.path.join(pathToRawData, d)) \
@@ -388,39 +552,90 @@ if __name__ == "__main__":
 
     logging.info(f"Converting following datasets: {list_of_data}")
     print(f"Converting following datasets: {list_of_data}")
+    terminal_issues = []
 
     # convert data into nifti format
     print("Paravision to nifti conversion running \33[5m...\33[0m (wait!)")
     #nifti_convert(output_dir, list_of_data)
-    nifti_convert(pathToRawData, list_of_data, output_dir)
-    print("\rNifti conversion \033[0;30;42m COMPLETED \33[0m                  ")
+    nifti_results = nifti_convert(pathToRawData, list_of_data, output_dir)
+    nifti_failed = [r for r in nifti_results if r["status"] == "failed"]
+    nifti_with_issues = [r for r in nifti_results if r["status"] == "completed_with_issues"]
+    if nifti_failed:
+        print(f"\rNifti conversion FAILED/PARTIAL: {len(nifti_results) - len(nifti_failed)} dataset(s) completed, {len(nifti_failed)} failed.                  ")
+        terminal_issues.append(f"NIfTI conversion failed for {len(nifti_failed)} dataset(s)")
+    elif nifti_with_issues:
+        issue_count = sum(len(r["issue_lines"]) for r in nifti_with_issues)
+        print(f"\rNifti conversion COMPLETED WITH WARNINGS: {issue_count} scan conversion issue(s) detected.                  ")
+        terminal_issues.append(f"NIfTI conversion reported {issue_count} scan conversion issue(s)")
+    else:
+        print("\rNifti conversion \033[0;30;42m COMPLETED \33[0m                  ")
+    if nifti_failed or nifti_with_issues:
+        logging.warning("NIfTI conversion issue summary: %s", nifti_failed + nifti_with_issues)
     
     # convert data into BIDS format
     print("BIDS conversion running \33[5m...\33[0m (wait!)")
-    bids_convert(pathToRawData, output_dir)
-    print("\rBIDS conversion \033[0;30;42m COMPLETED \33[0m                   ")
+    bids_results = bids_convert(pathToRawData, output_dir)
+    bids_failed = [r for r in bids_results if r["status"] == "failed"]
+    bids_with_issues = [r for r in bids_results if r["status"] == "completed_with_issues"]
+    bids_with_warnings = [r for r in bids_results if r["status"] == "completed_with_warnings"]
+    if bids_failed:
+        print(f"\rBIDS conversion FAILED/PARTIAL: {len(bids_failed)} command(s) failed.                   ")
+        terminal_issues.append(f"BIDS conversion failed in {len(bids_failed)} command(s)")
+    elif bids_with_issues:
+        issue_count = sum(len(r["error_lines"]) for r in bids_with_issues)
+        print(f"\rBIDS conversion COMPLETED WITH ISSUES: {issue_count} issue(s) detected.                   ")
+        terminal_issues.append(f"BIDS conversion reported {issue_count} issue(s)")
+    elif bids_with_warnings:
+        warning_count = sum(len(r["warning_lines"]) for r in bids_with_warnings)
+        print(f"\rBIDS conversion COMPLETED WITH WARNINGS: {warning_count} warning(s) logged.                   ")
+    else:
+        print("\rBIDS conversion \033[0;30;42m COMPLETED \33[0m                   ")
+    print_output_counts(output_dir)
+    postprocess_status = {}
     
     # adjust bvecs and bvals for diffusion data for each subject and session
-    print("Adjusting bvecs and bvals for diffusion data \33[5m...\33[0m (wait!)")
+    print("DWI post-processing: adjusting bvecs and bvals \33[5m...\33[0m (wait!)")
+    dwi_processed = 0
+    dwi_missing = 0
+    dwi_failed = 0
+    dwi_issue_details = []
     for subject_session_output_dir in glob.glob(os.path.join(output_dir, "sub-*", "ses-*")):
-        print(f"Processing directory: {subject_session_output_dir}")
         # adjust bvecs and bvals for length of acquisition (number of repetitions)
         if os.path.exists(os.path.join(subject_session_output_dir, "dwi")):
             try:
-                adjust_bvec_rep(subject_session_output_dir)
+                run_with_logged_output(
+                    adjust_bvec_rep,
+                    subject_session_output_dir,
+                    log_prefix=f"DWI post-processing details for {subject_session_output_dir}:",
+                )
+                dwi_processed += 1
             except FileNotFoundError as e:
-                print(f"Valid diffusion data files missing in {subject_session_output_dir}/dwi, skipping.")
                 logging.warning(f"Valid diffusion data files missing in {subject_session_output_dir}/dwi: {e}")
+                dwi_issue_details.append(f"missing files in {subject_session_output_dir}/dwi: {e}")
+                dwi_missing += 1
                 continue
             except Exception as e:
-                print(f"Error processing diffusion data in {subject_session_output_dir}/dwi: {e}")
                 logging.error(f"Error processing diffusion data in {subject_session_output_dir}/dwi: {e}")
+                dwi_issue_details.append(f"failed in {subject_session_output_dir}/dwi: {e}")
+                dwi_failed += 1
                 continue
         else:
-            print(f"No diffusion data found in {subject_session_output_dir}, skipping.")
-            logging.warning(f"No diffusion data found in {subject_session_output_dir}, skipping.")
+            logging.info(f"No diffusion data found in {subject_session_output_dir}, skipping DWI post-processing.")
             continue
-    print("\rAdjusting bvecs and bvals \033[0;30;42m COMPLETED \33[0m       ")
+    if dwi_processed == 0 and dwi_missing == 0 and dwi_failed == 0:
+        print("\rDWI post-processing SKIPPED: no dwi directories found.          ")
+        postprocess_status["dwi"] = "skipped: no dwi data"
+    elif dwi_failed > 0:
+        print(f"\rDWI post-processing FAILED/PARTIAL: {dwi_processed} processed, {dwi_missing} missing files, {dwi_failed} failed.       ")
+        postprocess_status["dwi"] = f"partial: {dwi_processed} processed, {dwi_failed} failed"
+        terminal_issues.append(f"DWI post-processing had {dwi_failed} failed and {dwi_missing} skipped file set(s)")
+    else:
+        print(f"\rDWI post-processing COMPLETED: {dwi_processed} file set(s) adjusted, {dwi_missing} skipped.       ")
+        postprocess_status["dwi"] = f"converted + bval/bvec adjusted ({dwi_processed})"
+        if dwi_missing > 0:
+            terminal_issues.append(f"DWI post-processing skipped {dwi_missing} file set(s) with missing files")
+    if dwi_issue_details:
+        logging.warning("DWI post-processing issue details:\n%s", "\n".join(dwi_issue_details))
 
     # plot QC images for nifti files
     print("Plotting QC images for nifti files \33[5m...\33[0m (wait!)")
@@ -444,25 +659,32 @@ if __name__ == "__main__":
     mese_scan_data = {}
     mese_scan_ids = []
     fmri_scan_ids = {}
-    dataset_csv = glob.glob(os.path.join(pathToRawData, "dataset*.csv"))[0]
+    dataset_csv_candidates = glob.glob(os.path.join(pathToRawData, "dataset*.csv"))
+    if not dataset_csv_candidates:
+        sys.exit(f"Error: no dataset*.csv found in {pathToRawData}")
+    dataset_csv = dataset_csv_candidates[0]
     if os.path.exists(dataset_csv):
         with open(dataset_csv, 'r') as csvfile:
             df = pd.read_csv(csvfile, delimiter=',')
             for index, row in df.iterrows():
                 # save every sub which has MEMS scans
-                if row["modality"] == "MESE":
+                if row.get("modality") == "MESE":
                     mese_scan_ids.append(row["SubjID"])
                     mese_scan_data[row["SubjID"]] = {}
                     mese_scan_data[row["SubjID"]]["ScanID"] = row["ScanID"]
                     mese_scan_data[row["SubjID"]]["RawData"] = row["RawData"]
                 # save every sub and scanid wich is fmri scan
-                if row["DataType"] == "func":
+                if row.get("DataType") == "func":
                     fmri_scan_ids[row["RawData"]] = {}
                     fmri_scan_ids[row["RawData"]]["ScanID"] = row["ScanID"] 
                     fmri_scan_ids[row["RawData"]]["SessID"] = row["SessID"]
                     fmri_scan_ids[row["RawData"]]["SubjID"] = row["SubjID"]           
     
     # iterate over all fmri scans to calculate and save custom slice timings
+    print("Checking functional MRI metadata for slice timing updates ...")
+    func_updated = 0
+    func_failed = 0
+    func_issue_details = []
     for sub, data in fmri_scan_ids.items():
         scanid = str(data["ScanID"])
         sessid = str(data["SessID"])
@@ -475,7 +697,25 @@ if __name__ == "__main__":
         out_file = os.path.join(output_dir, "sub-" + subjid, "ses-" + sessid, "func", "sub-" + subjid + "_ses-" + sessid + "_EPI.json")
         
         # calculate slice timings
-        create_slice_timings(fmri_scan_method_file, scanid, out_file)
+        try:
+            create_slice_timings(fmri_scan_method_file, scanid, out_file)
+            func_updated += 1
+        except Exception as e:
+            func_failed += 1
+            logging.error(f"Error updating slice timing metadata for sub-{subjid} ses-{sessid}: {e}")
+            func_issue_details.append(f"sub-{subjid} ses-{sessid}: {e}")
+    if func_updated == 0 and func_failed == 0:
+        print("FUNC metadata update SKIPPED: no func entries found in dataset.csv.")
+        postprocess_status["func"] = "skipped: no func data"
+    elif func_failed > 0:
+        print(f"FUNC metadata update FAILED/PARTIAL: {func_updated} updated, {func_failed} failed.")
+        postprocess_status["func"] = f"partial: {func_updated} updated, {func_failed} failed"
+        terminal_issues.append(f"FUNC metadata update failed for {func_failed} file(s)")
+    else:
+        print(f"FUNC metadata update COMPLETED: {func_updated} EPI json file(s) updated.")
+        postprocess_status["func"] = f"converted + slice timing updated ({func_updated})"
+    if func_issue_details:
+        logging.warning("FUNC metadata update issue details:\n%s", "\n".join(func_issue_details))
     
     ## use parallel computing for a faster generation of t2maps
     mese_scan_sessions = []
@@ -487,22 +727,76 @@ if __name__ == "__main__":
             if mese_scan_ses not in mese_scan_sessions:
                 mese_scan_sessions.append(os.path.join(mese_scan_path, ses))
    
-    print("T2 mapping running \33[5m...\33[0m (wait!)")
     logging.info(f"Creating T2w maps for following datasets:\n{mese_scan_ids}")
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        
-        futures = [executor.submit(create_mems_and_map, mese_scan_ses, mese_scan_data, output_dir) for mese_scan_ses in mese_scan_sessions]
-        concurrent.futures.wait(futures)
-        
-        
-    print('\rT2 mapping \033[0;30;42m COMPLETED \33[0m                            ')
-    logging.info(f"Finished creating T2w maps")
+    print("Checking for MESE/MEMS scans for T2 mapping ...")
+    if not mese_scan_ids:
+        datatypes, modalities = describe_dataset_csv(df)
+        print(f"No MESE/MEMS scans found in {dataset_csv}.")
+        print(f"Found DataTypes: {datatypes}. Found modalities: {modalities}.")
+        print("T2 mapping SKIPPED: expected dataset.csv rows with modality == \"MESE\".")
+        logging.info("T2 mapping skipped: no MESE/MEMS scans found in dataset.csv")
+        postprocess_status["t2map"] = "skipped: no MESE/MEMS input"
+    elif not mese_scan_sessions:
+        print("T2 mapping SKIPPED: MESE entries were found, but no matching BIDS session directories exist.")
+        logging.warning("T2 mapping skipped: MESE entries found but no matching session directories")
+        postprocess_status["t2map"] = "skipped: no matching session directories"
+    else:
+        print(f"Found {len(mese_scan_ids)} MESE scan(s) for {len(mese_scan_sessions)} session(s).")
+        print("T2 mapping running \33[5m...\33[0m (wait!)")
+        t2_results = []
+        t2_failures = []
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = {
+                executor.submit(create_mems_and_map, mese_scan_ses, mese_scan_data, output_dir): mese_scan_ses
+                for mese_scan_ses in mese_scan_sessions
+            }
+            for future in concurrent.futures.as_completed(futures):
+                session = futures[future]
+                try:
+                    t2_results.append(future.result())
+                except Exception as e:
+                    t2_failures.append((session, str(e)))
+                    logging.error(f"T2 mapping failed for {session}: {e}")
 
-    dataset_csv = glob.glob(os.path.join(pathToRawData, "dataset*.csv"))[0]
+        t2_created = [r for r in t2_results if r["status"] == "created"]
+        t2_partial = [r for r in t2_results if r["status"] == "partial"]
+        t2_skipped = [r for r in t2_results if r["status"] == "skipped"]
+        if t2_failures:
+            print(f"T2 mapping FAILED/PARTIAL: {len(t2_created)} map(s) created, {len(t2_partial)} partial, {len(t2_skipped)} skipped, {len(t2_failures)} failed.")
+            postprocess_status["t2map"] = f"partial: {len(t2_created)} map(s) created, {len(t2_failures)} failed"
+            terminal_issues.append(f"T2 mapping failed for {len(t2_failures)} session(s)")
+            logging.warning(
+                "T2 mapping failure details:\n%s",
+                "\n".join([f"{session}: {reason}" for session, reason in t2_failures]),
+            )
+        elif t2_created:
+            print(f"T2 mapping COMPLETED: {len(t2_created)} map(s) created, {len(t2_partial)} partial, {len(t2_skipped)} skipped.")
+            postprocess_status["t2map"] = f"converted ({len(t2_created)} map(s) created)"
+        else:
+            print(f"T2 mapping SKIPPED: 0 maps created, {len(t2_partial)} partial, {len(t2_skipped)} skipped.")
+            postprocess_status["t2map"] = "skipped: no T2w maps created"
+            if t2_partial:
+                terminal_issues.append(f"T2 mapping created partial outputs for {len(t2_partial)} session(s), but no T2w maps")
+            logging.warning(
+                "T2 mapping skipped/partial details:\n%s",
+                "\n".join([f"{result['subject']}: {result['reason']}" for result in t2_partial + t2_skipped]),
+            )
+        logging.info(f"Finished T2 mapping with results: {t2_results}; failures: {t2_failures}")
+
     dataset_json = glob.glob(os.path.join(pathToRawData, "dataset*.json"))[0]
 
     #os.remove(dataset_csv)
     #os.remove(dataset_json)
+
+    print_conversion_summary(output_dir, postprocess_status)
+
+    if terminal_issues:
+        print("\nIssues detected during conversion:")
+        for issue in terminal_issues:
+            print(f" - {issue}")
+        print(f"See detailed log: {log_file_path}")
+    else:
+        print("\nNo conversion errors detected.")
 
     print("\n")
     print("###")
