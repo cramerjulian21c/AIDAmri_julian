@@ -121,8 +121,6 @@ def run_subprocess(command, datatype, step, anat_process=False):
 
     try:
         logging.info(f"Running command: {command}.\nCheck {log_file} for further information.")
-        if os.path.exists(log_file):
-            os.remove(log_file)    
         with open(log_file, 'w') as outfile:
             time.sleep(2) # make sure logging file is created before starting the subprocess
             child_env = os.environ.copy()
@@ -182,8 +180,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2_bias_method"):
                         command += f' -b {cfg["t2_bias_method"]}'
 
-                    if cfg.get("t2_bet_skip"):
-                        command += " --bet-skip"
+                    command += f' --bet {cfg["t2_bet"]}'
 
                     # BET-Parameter
                     if cfg.get("t2_frac") is not None:
@@ -195,10 +192,6 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2_center") is not None:
                         cx, cy, cz = cfg["t2_center"]
                         command += f' -c {cx} {cy} {cz}'
-
-                    # bet4animal
-                    if cfg.get("bet4animal"):
-                        command += ' --use-bet4animal'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -259,10 +252,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
-                    if cfg.get("func_bet_skip"):
-                        command += ' --bet-skip'
-                    if cfg.get("bet4animal"):
-                        command += ' --use-bet4animal'
+                    command += f' --bet {cfg["func_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -288,9 +278,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*EPI.nii.gz"))
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
-                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
-                    if cfg.get("bet4animal"):
-                        command += ' --use-bet4animal'
+                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc} --bet {cfg["func_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -301,8 +289,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
-                    if cfg.get("bet4animal"):
-                        command += ' --use-bet4animal'
+                    command += f' --bet {cfg["t2map_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -361,12 +348,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_denoiser"):
                         command += f' --denoiser {cfg["dwi_denoiser"]}'
 
-                    # Flags
-                    if cfg.get("bet4animal"):
-                        command += ' --use-bet4animal'
-
-                    if cfg.get("dwi_bet_skip"):
-                        command += ' --bet-skip'
+                    command += f' --bet {cfg["dwi_bet"]}'
 
                     if cfg.get("dwi_average_b0"):
                         command += ' --average-b0'
@@ -542,9 +524,11 @@ if __name__ == "__main__":
         help="Bias field correction method for T2 (none, mico or ants). Default: mico"
     )
     t2.add_argument(
-        "--t2-bet-skip",
-        action="store_true",
-        help="Skip BET during T2 preprocessing"
+        "--t2-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for T2: skip, bet or bet4animal. Default: bet"
     )
 
     t2.add_argument(
@@ -586,9 +570,11 @@ if __name__ == "__main__":
         help="Average b0 volumes before DWI processing"
     )
     dwi.add_argument(
-        "--dwi-bet-skip",
-        action="store_true",
-        help="Skip BET during DWI preprocessing"
+        "--dwi-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for DWI: skip, bet or bet4animal. Default: bet"
     )
     dwi.add_argument(
         "--dwi-skip-min-projection",
@@ -630,19 +616,23 @@ if __name__ == "__main__":
         help="Bias field correction for fMRI: none or ANTs (default: None)"
     )
     func.add_argument(
-        "--func-bet-skip",
-        action="store_true",
-        help="Skip BET during fMRI preprocessing"
+        "--func-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for fMRI preprocess/process: skip, bet or bet4animal. Default: bet"
     )
 
     # ============================================================
-    # BET / ANIMAL-SPECIFIC
+    # T2MAP PREPROCESSING (preProcessing_T2MAP.py)
     # ============================================================
-    bet = parser.add_argument_group("BET / animal settings")
-    bet.add_argument(
-        "--bet4animal",
-        action="store_true",
-        help="Use BET tuned for animal brains (bet4animal)"
+    t2map = parser.add_argument_group("T2map preprocessing (preProcessing_T2MAP.py)")
+    t2map.add_argument(
+        "--t2map-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for T2map: skip, bet or bet4animal. Default: bet"
     )
 
     # ============================================================

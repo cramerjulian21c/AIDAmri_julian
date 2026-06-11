@@ -17,7 +17,7 @@ import applyMICO
 import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET
+from common.bet import applyBET, skip_bet_function
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 
@@ -151,7 +151,13 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
     parser.add_argument('-g', '--horizontal-gradient', help='Horizontal gradient in fractional intensity threshold - default=0.0, positive values give larger brain outlines at bottom and smaller brain outlines at top', nargs='?',
                         type=float,default=0.0)
-    parser.add_argument('--use-bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument(
+        '--bet',
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help='Brain extraction method for T2map: skip, bet or bet4animal. Default: bet'
+    )
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
@@ -188,18 +194,21 @@ if __name__ == "__main__":
         print(f'Error in bias field correction\nError message: {str(e)}')
         raise
 
-    # get rid of your skull         
-    outputBET = applyBET(
-        input_file=output_mico,
-        frac=frac,
-        radius=radius,
-        horizontal_gradient=horizontal_gradient,
-        output_path=output_path,
-        use_bet4animal=args.use_bet4animal,
-        center=args.center,
-    )
+    if args.bet == "skip":
+        print("Skipping brain extraction.")
+        outputBET = skip_bet_function(output_mico)
+    else:
+        # get rid of your skull
+        outputBET = applyBET(
+            input_file=output_mico,
+            frac=frac,
+            radius=radius,
+            horizontal_gradient=horizontal_gradient,
+            output_path=output_path,
+            use_bet4animal=args.bet == "bet4animal",
+            center=args.center,
+        )
     print("Brainextraction was successful")
-
 
 
 

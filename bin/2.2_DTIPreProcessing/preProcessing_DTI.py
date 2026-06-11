@@ -316,13 +316,6 @@ if __name__ == "__main__":
         default=None
     )
     parser.add_argument(
-        '--bet-skip',
-        help='Skip BET during DTI preprocessing (still creates *Bet.nii.gz and *_mask.nii.gz for pipeline compatibility). '
-             'If not set it uses FSL BET (modified human version)',
-        action='store_true'
-    )
-
-    parser.add_argument(
         '-b',
         '--bias-method',
         help='Biasfield correction method - default="mico", other options are "ants" or "none"',
@@ -332,10 +325,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--use-bet4animal',
-        help='Use BET for animal brains. '
-             'If not set it use FSL (modified human version)',
-        action='store_true'
+        '--bet',
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help='Brain extraction method for DTI: skip, bet or bet4animal. Default: bet'
     )
 
     parser.add_argument(
@@ -489,9 +483,7 @@ if __name__ == "__main__":
             raise
     #print(os.path.exists(outputBiasCorr))
 
-    use_bet4animal = args.use_bet4animal
-
-    if args.bet_skip:
+    if args.bet == "skip":
         print("Skipping brain extraction.")
         outputBET = skip_bet_function(outputBiasCorr)
     else:
@@ -510,7 +502,7 @@ if __name__ == "__main__":
                     frac=frac,
                     radius=radius,
                     horizontal_gradient=horizontal_gradient,
-                    use_bet4animal=use_bet4animal,
+                    use_bet4animal=args.bet == "bet4animal",
                     center=args.center)
             finally:
                 stop_event.set()
