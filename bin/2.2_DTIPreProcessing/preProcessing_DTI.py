@@ -210,8 +210,8 @@ def smoothIMG(input_file, output_path,skip_min=False):
     """
     Prepare a 3D image for smoothing and apply FSL's median spatial filter.
     For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
-    written as *DN.nii.gz before smoothing. For 3D inputs, the DN image is just
-    a float32/header-normalized copy. If skip_min is True, no DN file is
+    written as *DN.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy. If skip_min is True, no MP file is
     created and the input image is passed directly to FSL smoothing.
     """
     data = nib.load(input_file)
