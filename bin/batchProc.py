@@ -289,6 +289,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
+                    if cfg.get("t2map_bias_method"):
+                        command += f' -b {cfg["t2map_bias_method"]}'
                     command += f' --bet {cfg["t2map_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
@@ -300,14 +302,18 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*SmoothMico*Bet.nii.gz"))
+                currentFile = sorted(
+                    currentPath_wData.glob("*Smooth*Bet.nii.gz"),
+                    key=lambda path: path.stat().st_mtime,
+                    reverse=True,
+                )
                 if len(currentFile)>0:
                     command = f'python registration_T2MAP.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *SmoothMico*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -633,6 +639,13 @@ if __name__ == "__main__":
         type=str.lower,
         default="bet",
         help="Brain extraction method for T2map: skip, bet or bet4animal. Default: bet"
+    )
+    t2map.add_argument(
+        "--t2map-bias-method",
+        choices=["none", "mico"],
+        type=str.lower,
+        default="mico",
+        help='Biasfield correction method for T2map: none or mico. Default: mico'
     )
 
     # ============================================================

@@ -180,6 +180,14 @@ if __name__ == "__main__":
         default="bet",
         help='Brain extraction method for T2map: skip, bet or bet4animal. Default: bet'
     )
+    parser.add_argument(
+        '-b',
+        '--bias-method',
+        choices=["none", "mico"],
+        type=str.lower,
+        default="mico",
+        help='Biasfield correction method for T2map: none or mico. Default: mico'
+    )
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
@@ -194,6 +202,7 @@ if __name__ == "__main__":
     frac = args.frac
     radius = args.radius
     horizontal_gradient = args.horizontal_gradient
+    bias_method = args.bias_method
     output_path = os.path.dirname(input_file)
     
     print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
@@ -209,20 +218,24 @@ if __name__ == "__main__":
         raise
 
     # intensity correction using non parametric bias field correction algorithm
-    try:
-        output_mico = applyMICO.run_MICO(output_smooth,output_path)
-        print("Biasfieldcorrecttion was successful")
-    except Exception as e:
-        print(f'Error in bias field correction\nError message: {str(e)}')
-        raise
+    if bias_method == "none":
+        print("No bias field correction applied")
+        outputBiasCorr = output_smooth
+    elif bias_method == "mico":
+        try:
+            outputBiasCorr = applyMICO.run_MICO(output_smooth,output_path)
+            print("Biasfieldcorrecttion was successful")
+        except Exception as e:
+            print(f'Error in bias field correction\nError message: {str(e)}')
+            raise
 
     if args.bet == "skip":
         print("Skipping brain extraction.")
-        outputBET = skip_bet_function(output_mico)
+        outputBET = skip_bet_function(outputBiasCorr)
     else:
         # get rid of your skull
         outputBET = applyBET(
-            input_file=output_mico,
+            input_file=outputBiasCorr,
             frac=frac,
             radius=radius,
             horizontal_gradient=horizontal_gradient,
@@ -231,7 +244,6 @@ if __name__ == "__main__":
             center=args.center,
         )
     print("Brainextraction was successful")
-
 
 
 

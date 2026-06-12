@@ -371,7 +371,7 @@ python batchProc.py -i /path/to/proc_data \
   -t anat dwi func t2map -s Baseline P3 P12 --t2-bias-method mico
 ```
 
-This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`), for example `anat` or `dwi`, and which sessions (`-s`) to compute. You can also specify which bias method should be used on the data.
+This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`), for example `anat` or `dwi`, and which sessions (`-s`) to compute. You can also specify which bias method should be used on the data, including `--t2map-bias-method none` to skip T2 map bias-field correction.
 
 You do not need to specify data types and sessions or any other argument except the input argument. If no `-t` and no `-s` flag are given, every data type and session of every subject will be processed.
 
@@ -536,14 +536,14 @@ Run preprocessing on the T2 map NIfTI file:
 python preProcessing_T2MAP.py -i .../t2map/testData_MEMS.nii.gz
 ```
 
-The preprocessing step applies smoothing, bias-field correction and brain extraction. The BET mode can be selected with `--bet {skip,bet,bet4animal}`. The BET parameters can be adjusted with `-f`, `-r` and `-g`. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal.
+The preprocessing step applies smoothing, optional bias-field correction and brain extraction. The bias-field correction can be selected with `--bias-method {none,mico}`. The BET mode can be selected with `--bet {skip,bet,bet4animal}`. The BET parameters can be adjusted with `-f`, `-r` and `-g`. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal.
 
 <h3 id="registration-of-t2-map-data">Registration of T2 map data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
-Register the atlas information into T2 map space using the brain-extracted T2 map file, usually ending in `*SmoothMicoBet.nii.gz`:
+Register the atlas information into T2 map space using the brain-extracted T2 map file, usually ending in `*Smooth*Bet.nii.gz`:
 
 ```text
-python registration_T2MAP.py -i .../t2map/testDataSmoothMicoBet.nii.gz
+python registration_T2MAP.py -i .../t2map/testDataSmoothBet.nii.gz
 ```
 
 The script searches the corresponding `anat` folder for the anatomical reference data, registered annotations and transformation files. If a stroke mask is present, it can also be propagated into the T2 map workflow.
