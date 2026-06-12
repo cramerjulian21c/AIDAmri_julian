@@ -452,6 +452,25 @@ def find(pattern, path):
 if __name__ == "__main__":
     import argparse
 
+    def parse_expert_cpu(value):
+        cpu_count = multiprocessing.cpu_count()
+        value = str(value).strip()
+
+        if value.endswith("%"):
+            value = value[:-1]
+
+        try:
+            percent = float(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                "--expert-cpu must be a percentage from 1 to 100, e.g. 50 or 50%"
+            )
+        if percent <= 0 or percent > 100:
+            raise argparse.ArgumentTypeError(
+                "--expert-cpu percentage must be greater than 0 and at most 100"
+            )
+        return max(1, round(cpu_count * percent / 100))
+
     parser = argparse.ArgumentParser(
         description=(
             "Batch processing of all data (AIDAmri). "
@@ -514,8 +533,8 @@ if __name__ == "__main__":
     )
     cpu.add_argument(
         "-e", "--expert-cpu",
-        type=int,
-        help="Explicit number of parallel processes"
+        type=parse_expert_cpu,
+        help="CPU percentage for parallel processes, e.g. 50 or 50%%"
     )
 
     # ============================================================
@@ -741,10 +760,10 @@ if __name__ == "__main__":
 
     print(args)
     
-    if args.expert_cpu:
-        num_processes = int(args.expert_cpu)
+    if args.expert_cpu is not None:
+        num_processes = args.expert_cpu
     
-    print(f"Running with {num_processes} parallel processes!")
+    print(f"Running with {num_processes} CPUs for the parallelization!")
     logging.info(f"Using {num_processes} CPUs for the parallelization")
     logging.info(f"Processing following datasets:\n{all_files}")
     # turns argparse.Namespace into a dict
