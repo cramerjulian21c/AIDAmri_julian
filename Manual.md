@@ -362,7 +362,7 @@ projectfolder/sub-/ses-/datatype
 ```
 
 > [!WARNING]
-> Batch processing may slow down the system depending on the CPU load-out. Use the `-c` flag or `-e/--expert-cpu` to specify CPU usage. `--expert-cpu` is interpreted as percent of available CPU cores, for example `50` or `50%`. Run `python batchProc.py -h` for more information.
+> Batch processing may slow down the system depending on the CPU load-out. Use `-c/--cpu-cores` to set presets or explicit process counts, or `-p/--cpu-percent` to set a percentage of available CPU cores, for example `50` or `50%`. Run `python batchProc.py -h` for more information.
 
 Example:
 

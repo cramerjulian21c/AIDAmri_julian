@@ -452,7 +452,7 @@ def find(pattern, path):
 if __name__ == "__main__":
     import argparse
 
-    def parse_expert_cpu(value):
+    def parse_cpu_percent(value):
         cpu_count = multiprocessing.cpu_count()
         value = str(value).strip()
 
@@ -463,13 +463,27 @@ if __name__ == "__main__":
             percent = float(value)
         except ValueError:
             raise argparse.ArgumentTypeError(
-                "--expert-cpu must be a percentage from 1 to 100, e.g. 50 or 50%"
+                "--cpu-percent must be a percentage from 1 to 100, e.g. 50 or 50%"
             )
         if percent <= 0 or percent > 100:
             raise argparse.ArgumentTypeError(
-                "--expert-cpu percentage must be greater than 0 and at most 100"
+                "--cpu-percent must be greater than 0 and at most 100"
             )
-        return max(1, round(cpu_count * percent / 100))
+        return max(1, int(cpu_count * percent / 100 + 0.5))
+
+    def parse_cpu_cores(value):
+        value = str(value).strip().lower()
+        if value in {"min", "half", "max"}:
+            return value
+        try:
+            cores = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                "--cpu-cores must be min, half, max or a positive integer"
+            )
+        if cores < 1:
+            raise argparse.ArgumentTypeError("--cpu-cores must be at least 1")
+        return cores
 
     parser = argparse.ArgumentParser(
         description=(
@@ -527,13 +541,13 @@ if __name__ == "__main__":
     cpu.add_argument(
         "-c", "--cpu-cores",
         default="half",
-        type=str.lower,
-        choices=["min", "half", "max"],
-        help="CPU usage preset (min, half, max)"
+        type=parse_cpu_cores,
+        help="CPU usage preset (min, half, max) or explicit number of parallel processes"
     )
     cpu.add_argument(
-        "-e", "--expert-cpu",
-        type=parse_expert_cpu,
+        "-p", "--cpu-percent",
+        dest="cpu_percent",
+        type=parse_cpu_percent,
         help="CPU percentage for parallel processes, e.g. 50 or 50%%"
     )
 
@@ -751,7 +765,9 @@ if __name__ == "__main__":
 
     num_processes = 1
 
-    if args.cpu_cores == "min":
+    if isinstance(args.cpu_cores, int):
+        num_processes = args.cpu_cores
+    elif args.cpu_cores == "min":
         num_processes = 1
     elif args.cpu_cores == "half":
         num_processes = int(multiprocessing.cpu_count() / 2)
@@ -760,8 +776,8 @@ if __name__ == "__main__":
 
     print(args)
     
-    if args.expert_cpu is not None:
-        num_processes = args.expert_cpu
+    if args.cpu_percent is not None:
+        num_processes = args.cpu_percent
     
     print(f"Running with {num_processes} CPUs for the parallelization!")
     logging.info(f"Using {num_processes} CPUs for the parallelization")
