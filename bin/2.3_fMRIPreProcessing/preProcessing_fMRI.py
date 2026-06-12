@@ -125,7 +125,10 @@ def n4biasfieldcorr(input_file):
 
 def smoothIMG(input_file,outputPath):
     """
-    Smoothes image via FSL. Only input and output has do be specified. Parameters are fixed to box shape and to the kernel size of 0.1 voxel.
+    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
+    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy.
     """
     source_base = os.path.basename(input_file).split('.')[0]
     data = nib.load(input_file)
