@@ -719,11 +719,11 @@ if __name__ == "__main__":
 
     num_processes = 1
 
-    if args.cpu_cores.upper() == "min":
+    if args.cpu_cores == "min":
         num_processes = 1
-    elif args.cpu_cores.upper() == "half":
+    elif args.cpu_cores == "half":
         num_processes = int(multiprocessing.cpu_count() / 2)
-    elif args.cpu_cores.upper() == "max":
+    elif args.cpu_cores == "max":
         num_processes = multiprocessing.cpu_count()
 
     print(args)
