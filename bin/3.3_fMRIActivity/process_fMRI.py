@@ -24,7 +24,7 @@ from pathlib import Path
 import json
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET
+from common.bet import applyBET, skip_bet_function
 
 
 def copyAtlasOfData(path,post,labels):
@@ -200,7 +200,7 @@ def create_txt_file(file, data):
 def delete_txt_file(file):
     os.remove(file)
 
-def startProcess(Rawfile_name, use_bet4animal=False, center=None):
+def startProcess(Rawfile_name, bet_method="bet", center=None):
     # generate folder for images
     origin_Path = os.path.dirname(Rawfile_name)
     proc_Path = os.path.join(origin_Path, 'rs-fMRI_niiData')
@@ -235,15 +235,18 @@ def startProcess(Rawfile_name, use_bet4animal=False, center=None):
     file_nameEPI = getEPIMean(file_name,proc_Path)
 
     # apply BET on EPImean
-    file_nameEPI_BET,mask_file = applyBET(
-        file_nameEPI,
-        frac=0.35,
-        radius=45,
-        horizontal_gradient=0.1,
-        use_bet4animal=use_bet4animal,
-        center=center,
-        return_mask=True
-    )
+    if bet_method == "skip":
+        file_nameEPI_BET, mask_file = skip_bet_function(file_nameEPI, return_mask=True)
+    else:
+        file_nameEPI_BET,mask_file = applyBET(
+            file_nameEPI,
+            frac=0.35,
+            radius=45,
+            horizontal_gradient=0.1,
+            use_bet4animal=bet_method == "bet4animal",
+            center=center,
+            return_mask=True
+        )
 
     #apply Mask on original dataset
     applyMask(file_name,mask_file)
@@ -277,10 +280,11 @@ if __name__ == "__main__":
     requiredNamed.add_argument('-i', '--input', help='Path to the RAW data of rsfMRI NIfTI file', required=True)
 
     parser.add_argument('-t', '--TR', default=TR, help='Current TR value')
-    parser.add_argument('-c', '--cutOff_sec', default=cutOff_sec, help='High-pass filter cutoff sec')
+    parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, help='High-pass filter cutoff sec')
     parser.add_argument('-f', '--FWHM', default=FWHM, help='Full width at half maximum')
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
-    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
+                        help='Brain extraction method for fMRI process: skip, bet or bet4animal. Default: bet')
     parser.add_argument('-ctr', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
 
     args = parser.parse_args()
@@ -305,7 +309,7 @@ if __name__ == "__main__":
 
     mcfFile_name = startProcess(
         input_file,
-        use_bet4animal=args.use_bet4animal,
+        bet_method=args.bet,
         center=args.center
     )
 
@@ -341,7 +345,7 @@ if __name__ == "__main__":
             stc,
             slice_order_path,
             costum_timings_path,
-            use_bet4animal=args.use_bet4animal,
+            bet_method=args.bet,
             center=args.center
         )
 
@@ -357,7 +361,7 @@ if __name__ == "__main__":
             cutOff_sec,
             TR,
             stc,
-            use_bet4animal=args.use_bet4animal,
+            bet_method=args.bet,
             center=args.center
         )
         print(f"sfrgr_file {sfrgr_file}")

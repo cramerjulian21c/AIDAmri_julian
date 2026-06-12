@@ -98,7 +98,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
     timeout = 5400 #timeout (sec) for subprocess
     command_args = shlex.split(command)
 
-    inp = _get_arg_after(["-i", "--input", "--input_file"], command_args)
+    inp = _get_arg_after(["-i", "--input", "--input-file"], command_args)
     if inp is None:
         inp = next((a for a in reversed(command_args)
                     if a.endswith(".nii") or a.endswith(".nii.gz")), command_args[-1])
@@ -121,8 +121,6 @@ def run_subprocess(command, datatype, step, anat_process=False):
 
     try:
         logging.info(f"Running command: {command}.\nCheck {log_file} for further information.")
-        if os.path.exists(log_file):
-            os.remove(log_file)    
         with open(log_file, 'w') as outfile:
             time.sleep(2) # make sure logging file is created before starting the subprocess
             child_env = os.environ.copy()
@@ -182,8 +180,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2_bias_method"):
                         command += f' -b {cfg["t2_bias_method"]}'
 
-                    if cfg.get("t2_bet_skip"):
-                        command += " --bet_skip"
+                    command += f' --bet {cfg["t2_bet"]}'
 
                     # BET-Parameter
                     if cfg.get("t2_frac") is not None:
@@ -195,10 +192,6 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2_center") is not None:
                         cx, cy, cz = cfg["t2_center"]
                         command += f' -c {cx} {cy} {cz}'
-
-                    # bet4animal
-                    if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -259,10 +252,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
-                    if cfg.get("func_bet_skip"):
-                        command += ' --bet_skip'
-                    if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                    command += f' --bet {cfg["func_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -288,9 +278,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*EPI.nii.gz"))
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
-                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
-                    if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc} --bet {cfg["func_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -301,8 +289,9 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
-                    if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
+                    if cfg.get("t2map_bias_method"):
+                        command += f' -b {cfg["t2map_bias_method"]}'
+                    command += f' --bet {cfg["t2map_bet"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -313,14 +302,18 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*SmoothMico*Bet.nii.gz"))
+                currentFile = sorted(
+                    currentPath_wData.glob("*Smooth*Bet.nii.gz"),
+                    key=lambda path: path.stat().st_mtime,
+                    reverse=True,
+                )
                 if len(currentFile)>0:
                     command = f'python registration_T2MAP.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *SmoothMico*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -361,18 +354,13 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_denoiser"):
                         command += f' --denoiser {cfg["dwi_denoiser"]}'
 
-                    # Flags
-                    if cfg.get("bet4animal"):
-                        command += ' --use_bet4animal'
-
-                    if cfg.get("dwi_bet_skip"):
-                        command += ' --bet_skip'
+                    command += f' --bet {cfg["dwi_bet"]}'
 
                     if cfg.get("dwi_average_b0"):
-                        command += ' --average_b0'
+                        command += ' --average-b0'
 
                     if cfg.get("dwi_skip_min_projection"):
-                        command += ' --skip_min_projection'
+                        command += ' --skip-min-projection'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -421,12 +409,12 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         f'-b {_quote(b_table)} '
                         f'-t {track_param_args} -r {_quote(recon_method)} '
                         f'-v {_quote(vivo)} -m {_quote(make_iso)} '
-                        f'--thread_count {thread_count}'
+                        f'--thread-count {thread_count}'
                     )
                     if legacy:
                         cli_str += ' -l'
                     if skip_motion_correction:
-                        cli_str += ' --skip_motion_correction'
+                        cli_str += ' --skip-motion-correction'
                     if optional:
                         cli_str += ' -o ' + ' '.join(_quote(item) for item in optional)
 
@@ -463,6 +451,39 @@ def find(pattern, path):
 
 if __name__ == "__main__":
     import argparse
+
+    def parse_cpu_percent(value):
+        cpu_count = multiprocessing.cpu_count()
+        value = str(value).strip()
+
+        if value.endswith("%"):
+            value = value[:-1]
+
+        try:
+            percent = float(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                "--cpu-percent must be a percentage from 1 to 100, e.g. 50 or 50%"
+            )
+        if percent <= 0 or percent > 100:
+            raise argparse.ArgumentTypeError(
+                "--cpu-percent must be greater than 0 and at most 100"
+            )
+        return max(1, int(cpu_count * percent / 100 + 0.5))
+
+    def parse_cpu_cores(value):
+        value = str(value).strip().lower()
+        if value in {"min", "half", "max"}:
+            return value
+        try:
+            cores = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                "--cpu-cores must be min, half, max or a positive integer"
+            )
+        if cores < 1:
+            raise argparse.ArgumentTypeError("--cpu-cores must be at least 1")
+        return cores
 
     parser = argparse.ArgumentParser(
         description=(
@@ -520,14 +541,14 @@ if __name__ == "__main__":
     cpu.add_argument(
         "-c", "--cpu-cores",
         default="half",
-        type=str.lower,
-        choices=["min", "half", "max"],
-        help="CPU usage preset (min, half, max)"
+        type=parse_cpu_cores,
+        help="CPU usage preset (min, half, max) or explicit number of parallel processes"
     )
     cpu.add_argument(
-        "-e", "--expert-cpu",
-        type=int,
-        help="Explicit number of parallel processes"
+        "-p", "--cpu-percent",
+        dest="cpu_percent",
+        type=parse_cpu_percent,
+        help="CPU percentage for parallel processes, e.g. 50 or 50%%"
     )
 
     # ============================================================
@@ -542,9 +563,11 @@ if __name__ == "__main__":
         help="Bias field correction method for T2 (none, mico or ants). Default: mico"
     )
     t2.add_argument(
-        "--t2-bet-skip",
-        action="store_true",
-        help="Skip BET during T2 preprocessing"
+        "--t2-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for T2: skip, bet or bet4animal. Default: bet"
     )
 
     t2.add_argument(
@@ -586,9 +609,11 @@ if __name__ == "__main__":
         help="Average b0 volumes before DWI processing"
     )
     dwi.add_argument(
-        "--dwi-bet-skip",
-        action="store_true",
-        help="Skip BET during DWI preprocessing"
+        "--dwi-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for DWI: skip, bet or bet4animal. Default: bet"
     )
     dwi.add_argument(
         "--dwi-skip-min-projection",
@@ -630,19 +655,30 @@ if __name__ == "__main__":
         help="Bias field correction for fMRI: none or ANTs (default: None)"
     )
     func.add_argument(
-        "--func-bet-skip",
-        action="store_true",
-        help="Skip BET during fMRI preprocessing"
+        "--func-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for fMRI preprocess/process: skip, bet or bet4animal. Default: bet"
     )
 
     # ============================================================
-    # BET / ANIMAL-SPECIFIC
+    # T2MAP PREPROCESSING (preProcessing_T2MAP.py)
     # ============================================================
-    bet = parser.add_argument_group("BET / animal settings")
-    bet.add_argument(
-        "--bet4animal",
-        action="store_true",
-        help="Use BET tuned for animal brains (bet4animal)"
+    t2map = parser.add_argument_group("T2map preprocessing (preProcessing_T2MAP.py)")
+    t2map.add_argument(
+        "--t2map-bet",
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help="Brain extraction method for T2map: skip, bet or bet4animal. Default: bet"
+    )
+    t2map.add_argument(
+        "--t2map-bias-method",
+        choices=["none", "mico"],
+        type=str.lower,
+        default="mico",
+        help='Biasfield correction method for T2map: none or mico. Default: mico'
     )
 
     # ============================================================
@@ -729,19 +765,21 @@ if __name__ == "__main__":
 
     num_processes = 1
 
-    if args.cpu_cores.upper() == "min":
+    if isinstance(args.cpu_cores, int):
+        num_processes = args.cpu_cores
+    elif args.cpu_cores == "min":
         num_processes = 1
-    elif args.cpu_cores.upper() == "half":
+    elif args.cpu_cores == "half":
         num_processes = int(multiprocessing.cpu_count() / 2)
-    elif args.cpu_cores.upper() == "max":
+    elif args.cpu_cores == "max":
         num_processes = multiprocessing.cpu_count()
 
     print(args)
     
-    if args.expert_cpu:
-        num_processes = int(args.expert_cpu)
+    if args.cpu_percent is not None:
+        num_processes = args.cpu_percent
     
-    print(f"Running with {num_processes} parallel processes!")
+    print(f"Running with {num_processes} CPUs for the parallelization!")
     logging.info(f"Using {num_processes} CPUs for the parallelization")
     logging.info(f"Processing following datasets:\n{all_files}")
     # turns argparse.Namespace into a dict

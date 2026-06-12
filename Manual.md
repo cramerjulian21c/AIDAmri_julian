@@ -311,7 +311,7 @@ All program examples are listed only with the mandatory input parameters. For mo
 python <command> -h
 ```
 
-The command-line examples use the identifier `testData<No.>.nii.gz` and can be identically applied to other data. The test data are freely available at DOI `10.12751/g-node.70e11f`.
+The command-line examples use the identifier `testData<No.>.nii.gz` and can be identically applied to other data. The test data are freely [**here**](https://next.hessenbox.de/index.php/s/3tRzc5rCC8GWCAc).
 
 After a successful download, you can choose either to process single files manually or automate the processing for the whole dataset. In both cases, processing includes file conversion from the raw Bruker format into NIfTI format, several preprocessing steps and registration with the Allen Brain Reference Atlas. The functions in `/bin` are named according to the MRI sequence to be processed, such as `T2`, `DTI` and `fMRI`.
 
@@ -362,7 +362,7 @@ projectfolder/sub-/ses-/datatype
 ```
 
 > [!WARNING]
-> Batch processing may slow down the system depending on the CPU load-out. Use the `-c` or `-e` flag to specify CPU usage. Run `python batchProc.py -h` for more information.
+> Batch processing may slow down the system depending on the CPU load-out. Use `-c/--cpu-cores` to set presets or explicit process counts, or `-p/--cpu-percent` to set a percentage of available CPU cores, for example `50` or `50%`. Run `python batchProc.py -h` for more information.
 
 Example:
 
@@ -371,7 +371,7 @@ python batchProc.py -i /path/to/proc_data \
   -t anat dwi func t2map -s Baseline P3 P12 --t2-bias-method mico
 ```
 
-This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`), for example `anat` or `dwi`, and which sessions (`-s`) to compute. You can also specify which bias method should be used on the data.
+This script runs every necessary script for preprocessing, registration and processing steps. You can specify which data types (`-t`), for example `anat` or `dwi`, and which sessions (`-s`) to compute. You can also specify which bias method should be used on the data, including `--t2map-bias-method none` to skip T2 map bias-field correction.
 
 You do not need to specify data types and sessions or any other argument except the input argument. If no `-t` and no `-s` flag are given, every data type and session of every subject will be processed.
 
@@ -425,7 +425,7 @@ You can specify the bias correction method with the `-b` flag.
 By default, AIDAmri uses `MICO`, which is well suited for small animal MRI data. Alternatively, you can use `ANTS`. The bias-corrected output file is saved with the ending `...Bias.nii.gz`.
 For brain extraction, several parameters can be adjusted. For example, the `-f` flag defines the fractional intensity threshold used by FSL's BET method. You can also specify parameters such as the brain radius or the horizontal gradient if you want to make the extraction stricter in the anterior or posterior direction.
 The default brain extraction method is FSL's `BET`, which was originally developed for human brain MRI but is used here in a modified way. As an alternative, AIDAmri also supports `bet4animal`, which is specifically designed for small animal brains, such as mouse or rat brains. `bet4animal` is often easier to use because parameters such as the fractional intensity threshold do not need to be selected manually.
-However, in practice, neither method is always superior. In some cases, the default `BET` method gives better results, while in other cases `bet4animal` works better. Therefore, we recommend testing both methods and visually checking the resulting brain extraction.
+However, in practice, neither method is always superior. In some cases, particularly when data quality is poor, the default `BET` method gives better results, while in other cases `bet4animal` works better. Therefore, we recommend testing both methods and visually checking the resulting brain extraction. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal.
 The brain-extracted output file is saved with the ending `...Bet.nii.gz`.
 
 <h3 id="registration-of-anatomical-data">Registration of anatomical data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
@@ -536,14 +536,14 @@ Run preprocessing on the T2 map NIfTI file:
 python preProcessing_T2MAP.py -i .../t2map/testData_MEMS.nii.gz
 ```
 
-The preprocessing step applies smoothing, bias-field correction and brain extraction. The BET parameters can be adjusted with `-f`, `-r` and `-g`.
+The preprocessing step applies smoothing, optional bias-field correction and brain extraction. The bias-field correction can be selected with `--bias-method {none,mico}`. The BET mode can be selected with `--bet {skip,bet,bet4animal}`. The BET parameters can be adjusted with `-f`, `-r` and `-g`. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal.
 
 <h3 id="registration-of-t2-map-data">Registration of T2 map data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
-Register the atlas information into T2 map space using the brain-extracted T2 map file, usually ending in `*SmoothMicoBet.nii.gz`:
+Register the atlas information into T2 map space using the brain-extracted T2 map file, usually ending in `*Smooth*Bet.nii.gz`:
 
 ```text
-python registration_T2MAP.py -i .../t2map/testDataSmoothMicoBet.nii.gz
+python registration_T2MAP.py -i .../t2map/testDataSmoothBet.nii.gz
 ```
 
 The script searches the corresponding `anat` folder for the anatomical reference data, registered annotations and transformation files. If a stroke mask is present, it can also be propagated into the T2 map workflow.
@@ -568,7 +568,7 @@ The DTI preprocessing step prepares the diffusion data for registration and trac
 python preProcessing_DTI.py -i .../dwi/testData_dwi.nii.gz
 ```
 
-Several preprocessing options can be adjusted, for example the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Brain extraction can also be skipped with `--bet_skip`, in which case compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
+Several preprocessing options can be adjusted, for example the BET mode with `--bet {skip,bet,bet4animal}`, the BET parameters `-f`, `-r` and `-g`, the bias-field method with `-b`, or the denoising method with `--denoiser patch2self`. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal. If `--bet skip` is selected, compatibility files ending in `*Bet.nii.gz` and `*_mask.nii.gz` are still created.
 
 <h3 id="registration-of-dti-data">Registration of DTI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
@@ -603,7 +603,7 @@ Connectivity is calculated with DSI Studio:
 python dsi_main.py -i .../dwi/testData_dwi.nii.gz
 ```
 
-By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread_count`).
+By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread-count`).
 
 The output is stored in the DTI folder. Diffusion metric maps such as FA, AD, RD and MD are stored in `.../dwi/DSI_studio`.
 
@@ -629,7 +629,7 @@ Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise F
 
 rs-fMRI processing should be performed after the anatomical `anat` data of the same subject and session have already been preprocessed and registered. The fMRI registration uses the processed T2/anatomical data, the registered atlas annotations and the T2 transformation files as reference. If DTI data are available and provide better alignment, the fMRI registration can optionally use DTI as an intermediate reference.
 
-The preprocessing step expects an EPI NIfTI file and performs the basic preparation of the rs-fMRI data, including generation of a brain-extracted image. Brain extraction quality should be visually checked and can be adjusted with the BET parameters `-f`, `-r` and `-g`.
+The preprocessing step expects an EPI NIfTI file and performs the basic preparation of the rs-fMRI data, including generation of a brain-extracted image. The BET mode can be selected with `--bet {skip,bet,bet4animal}`. Brain extraction quality should be visually checked and can be adjusted with the BET parameters `-f`, `-r` and `-g`. Please note that the BET parameters `-f`, `-r` and `-g` can only be used with FSL BET not with bet4animal.
 
 ```text
 python preProcessing_fMRI.py -i .../func/testData_EPI.nii.gz

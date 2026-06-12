@@ -70,7 +70,8 @@ git switch rat
 
 ## EXAMPLE FILES
 
-Download [**here**](https://gin.g-node.org/Aswendt_Lab/testdata_AIDA) (you probably have to clone the dataset from the gin repo. The files are annexed files, also use the raw_data folder as the test data).\
+Download the example dataset [**here**](https://next.hessenbox.de/index.php/s/3tRzc5rCC8GWCAc).
+You can test AIDAmri using either the raw_data folder or the already converted nifti folder. The results can then be compared with the preprocessed data provided in the proc_folder.\
 Mouse MRI data, acquired with Bruker 9.4T - cryo coil setup: adult C57BL7/6 mouse, 
 T2-weighted (anatomical scan),
 DTI (structural connectivity scan),
@@ -243,6 +244,7 @@ or
 
 join our Open Office Hour - each Thursday 3:00 pm (UTC+2) [![Zoom](https://img.shields.io/badge/Zoom-2D8CFF?style=for-the-badge&logo=zoom&logoColor=white)](https://uni-frankfurt.zoom-x.de/j/63112745009?pwd=JBTjMVbuaTw9cZvFnppTwCPjGdQEyx.1)
 
+Please note that the Open Office Hour may not take place on public holidays in Germany.
 
 For all other inquiries: Markus Aswendt (aswendtATmed.uni-frankfurt.de)
 

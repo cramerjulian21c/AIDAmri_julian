@@ -16,7 +16,7 @@ import glob
 import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET
+from common.bet import applyBET, skip_bet_function
 
 
 def scaleBy10(input_path,inv):
@@ -220,7 +220,7 @@ def filterFSL(input_file,highpass,tempMean):
 #adjust default parameters if needed
 def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
                     slice_order=None, costum_timings=None,
-                    use_bet4animal=False, center=None):
+                    bet_method="bet", center=None):
     # generate folder regr images
     
     origin_Path = os.path.dirname(os.path.dirname(input_File))
@@ -247,15 +247,18 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
 
     # get mean
     meanRegr_File = getMean(regr_FileReal,'mean2')
-    file_nameEPI_BET, mask_file = applyBET(
-        meanRegr_File,
-        frac=0.35,
-        radius=45,
-        horizontal_gradient=0.1,
-        use_bet4animal=use_bet4animal,
-        center=center,
-        return_mask=True
-    )
+    if bet_method == "skip":
+        file_nameEPI_BET, mask_file = skip_bet_function(meanRegr_File, return_mask=True)
+    else:
+        file_nameEPI_BET, mask_file = applyBET(
+            meanRegr_File,
+            frac=0.35,
+            radius=45,
+            horizontal_gradient=0.1,
+            use_bet4animal=bet_method == "bet4animal",
+            center=center,
+            return_mask=True
+        )
     os.remove(meanRegr_File)
     regr_File = applyMask(regr_FileReal,mask_file,'')
 
@@ -315,7 +318,8 @@ if __name__ == "__main__":
 
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i','--input', help='Path to input file',required=True)
-    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
+                        help='Brain extraction method: skip, bet or bet4animal. Default: bet')
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
@@ -327,6 +331,6 @@ if __name__ == "__main__":
 
     result = startRegression(
         input,
-        use_bet4animal=args.use_bet4animal,
+        bet_method=args.bet,
         center=args.center
     )

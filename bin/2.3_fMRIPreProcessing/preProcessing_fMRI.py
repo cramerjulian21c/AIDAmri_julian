@@ -125,7 +125,10 @@ def n4biasfieldcorr(input_file):
 
 def smoothIMG(input_file,outputPath):
     """
-    Smoothes image via FSL. Only input and output has do be specified. Parameters are fixed to box shape and to the kernel size of 0.1 voxel.
+    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
+    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy.
     """
     source_base = os.path.basename(input_file).split('.')[0]
     data = nib.load(input_file)
@@ -189,8 +192,7 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
     parser.add_argument(
         '-g',
-        '--horizontal_gradient',
-        dest='horizontal_gradient',
+        '--horizontal-gradient',
         help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         nargs='?',
         type=float,
@@ -204,19 +206,15 @@ if __name__ == "__main__":
         default=None
     )
     parser.add_argument(
-        '--use_bet4animal',
-        help='Use BET for animal brains. If not set it uses FSL BET.',
-        action='store_true'
-    )
-    parser.add_argument(
-        '--bet_skip',
-        help='Skip BET during fMRI preprocessing (still creates *Bet.nii.gz and *_mask.nii.gz for pipeline compatibility). '
-             'If not set it uses FSL BET (modified human version)',
-        action='store_true'
+        '--bet',
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help='Brain extraction method for fMRI preprocessing: skip, bet or bet4animal. Default: bet'
     )
     parser.add_argument(
         '-b',
-        '--bias_method',
+        '--bias-method',
         help='Biasfield correction method - default=None, other options are "ants" or "none"',
         choices=["none", "ants"],
         type=str.lower,
@@ -259,7 +257,7 @@ if __name__ == "__main__":
             print(f'Error in bias field correction\nError message: {str(e)}')
             raise
 
-    if args.bet_skip:
+    if args.bet == "skip":
         print("Skipping brain extraction.")
         outputBET = skip_bet_function(outputBiasCorr)
     else:
@@ -269,7 +267,7 @@ if __name__ == "__main__":
             frac=frac,
             radius=radius,
             horizontal_gradient=horizontal_gradient,
-            use_bet4animal=args.use_bet4animal,
+            use_bet4animal=args.bet == "bet4animal",
             center=args.center,
         )
 

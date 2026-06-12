@@ -17,7 +17,7 @@ import applyMICO
 import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET
+from common.bet import applyBET, skip_bet_function
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 
@@ -99,17 +99,33 @@ def set_xform_codes_to_one(input_file):
 
 def smoothIMG(input_file, output_path):
     """
-    Smoothes image via FSL. Only input and output has do be specified. Parameters are fixed to box shape and to the kernel size of 0.1 voxel.
+    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
+    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy.
     """
     data = nib.load(input_file)
     vol = data.get_fdata()
-    ImgSmooth = np.min(vol, 3)
-
-    unscaledNiiData = nib.Nifti1Image(ImgSmooth, data.affine)
+    if vol.ndim == 4:
+        img_smooth = np.min(vol, axis=3).astype(np.float32)
+    elif vol.ndim == 3:
+        img_smooth = vol.astype(np.float32)
+    else:
+        raise ValueError(f"Unsupported image dimensionality: {vol.ndim}")
+    unscaledNiiData = nib.Nifti1Image(img_smooth, data.affine)
+    unscaledNiiData.set_qform(data.affine, code=1)
+    unscaledNiiData.set_sform(data.affine, code=1)
     hdrOut = unscaledNiiData.header
-    hdrOut.set_xyzt_units('mm')
+    hdrOut.set_data_dtype(np.float32)
+    space_unit, time_unit = hdrOut.get_xyzt_units()
+
+    if not space_unit or space_unit.lower() == "unknown":
+        space_unit = "mm"
+    if not time_unit or time_unit.lower() == "unknown":
+        time_unit = "sec"
+    hdrOut.set_xyzt_units(space_unit, time_unit)
     output_file = os.path.join(os.path.dirname(input_file),
-                               os.path.basename(input_file).split('.')[0] + 'DN.nii.gz')
+                               os.path.basename(input_file).split('.')[0] + '_MP.nii.gz')
     nib.save(unscaledNiiData, output_file)
     input_file = output_file
     output_file = os.path.join(output_path, os.path.basename(input_file).split('.')[0] + 'Smooth.nii.gz')
@@ -121,6 +137,12 @@ def smoothIMG(input_file, output_path):
         kernel_size = 0.1
     )
     myGauss.run()
+
+    img = nib.load(output_file)
+    hdr = img.header
+    hdr["pixdim"][4:8] = 1
+    nib.save(img, output_file)
+
     return output_file
 
 def thresh(input_file, output_path):
@@ -149,9 +171,23 @@ if __name__ == "__main__":
 
     parser.add_argument('-f', '--frac', help='Fractional intensity threshold - default=0.3, smaller values give larger brain outline estimates', nargs='?', type=float,default=0.3)
     parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
-    parser.add_argument('-g', '--horizontal_gradient', help='Horizontal gradient in fractional intensity threshold - default=0.0, positive values give larger brain outlines at bottom and smaller brain outlines at top', nargs='?',
+    parser.add_argument('-g', '--horizontal-gradient', help='Horizontal gradient in fractional intensity threshold - default=0.0, positive values give larger brain outlines at bottom and smaller brain outlines at top', nargs='?',
                         type=float,default=0.0)
-    parser.add_argument('--use_bet4animal', action='store_true', help='Use BET tuned for animal brains')
+    parser.add_argument(
+        '--bet',
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help='Brain extraction method for T2map: skip, bet or bet4animal. Default: bet'
+    )
+    parser.add_argument(
+        '-b',
+        '--bias-method',
+        choices=["none", "mico"],
+        type=str.lower,
+        default="mico",
+        help='Biasfield correction method for T2map: none or mico. Default: mico'
+    )
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
@@ -166,6 +202,7 @@ if __name__ == "__main__":
     frac = args.frac
     radius = args.radius
     horizontal_gradient = args.horizontal_gradient
+    bias_method = args.bias_method
     output_path = os.path.dirname(input_file)
     
     print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
@@ -181,28 +218,32 @@ if __name__ == "__main__":
         raise
 
     # intensity correction using non parametric bias field correction algorithm
-    try:
-        output_mico = applyMICO.run_MICO(output_smooth,output_path)
-        print("Biasfieldcorrecttion was successful")
-    except Exception as e:
-        print(f'Error in bias field correction\nError message: {str(e)}')
-        raise
+    if bias_method == "none":
+        print("No bias field correction applied")
+        outputBiasCorr = output_smooth
+    elif bias_method == "mico":
+        try:
+            outputBiasCorr = applyMICO.run_MICO(output_smooth,output_path)
+            print("Biasfieldcorrecttion was successful")
+        except Exception as e:
+            print(f'Error in bias field correction\nError message: {str(e)}')
+            raise
 
-    # get rid of your skull         
-    outputBET = applyBET(
-        input_file=output_mico,
-        frac=frac,
-        radius=radius,
-        horizontal_gradient=horizontal_gradient,
-        output_path=output_path,
-        use_bet4animal=args.use_bet4animal,
-        center=args.center,
-    )
+    if args.bet == "skip":
+        print("Skipping brain extraction.")
+        outputBET = skip_bet_function(outputBiasCorr)
+    else:
+        # get rid of your skull
+        outputBET = applyBET(
+            input_file=outputBiasCorr,
+            frac=frac,
+            radius=radius,
+            horizontal_gradient=horizontal_gradient,
+            output_path=output_path,
+            use_bet4animal=args.bet == "bet4animal",
+            center=args.center,
+        )
     print("Brainextraction was successful")
-
-
-
-
 
 
 

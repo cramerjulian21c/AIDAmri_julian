@@ -210,8 +210,8 @@ def smoothIMG(input_file, output_path,skip_min=False):
     """
     Prepare a 3D image for smoothing and apply FSL's median spatial filter.
     For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
-    written as *DN.nii.gz before smoothing. For 3D inputs, the DN image is just
-    a float32/header-normalized copy. If skip_min is True, no DN file is
+    written as *DN.nii.gz before smoothing. For 3D inputs, the MP image is just
+    a float32/header-normalized copy. If skip_min is True, no MP file is
     created and the input image is passed directly to FSL smoothing.
     """
     data = nib.load(input_file)
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     requiredNamed = parser.add_argument_group('Required named arguments')
     requiredNamed.add_argument(
         '-i',
-        '--input_file',
+        '--input-file',
         help='Path to the raw NIfTI DTI file',
         required=True,
     )
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-g',
-        '--horizontal_gradient',
+        '--horizontal-gradient',
         help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         type=float,
         default=0.0,
@@ -316,15 +316,8 @@ if __name__ == "__main__":
         default=None
     )
     parser.add_argument(
-        '--bet_skip',
-        help='Skip BET during DTI preprocessing (still creates *Bet.nii.gz and *_mask.nii.gz for pipeline compatibility). '
-             'If not set it uses FSL BET (modified human version)',
-        action='store_true'
-    )
-
-    parser.add_argument(
         '-b',
-        '--bias_method',
+        '--bias-method',
         help='Biasfield correction method - default="mico", other options are "ants" or "none"',
         choices = ["none", "mico", "ants"],
         type=str.lower,
@@ -332,10 +325,11 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--use_bet4animal',
-        help='Use BET for animal brains. '
-             'If not set it use FSL (modified human version)',
-        action='store_true'
+        '--bet',
+        choices=["skip", "bet", "bet4animal"],
+        type=str.lower,
+        default="bet",
+        help='Brain extraction method for DTI: skip, bet or bet4animal. Default: bet'
     )
 
     parser.add_argument(
@@ -348,12 +342,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--average_b0',
+        '--average-b0',
         help='Average the b0 volumes',
         action='store_true'
     )
     parser.add_argument(
-        '--skip_min_projection',
+        '--skip-min-projection',
         help='Skip creation of the 3D minimum-projection reference image before smoothing',
         action='store_true'
     )
@@ -489,9 +483,7 @@ if __name__ == "__main__":
             raise
     #print(os.path.exists(outputBiasCorr))
 
-    use_bet4animal = args.use_bet4animal
-
-    if args.bet_skip:
+    if args.bet == "skip":
         print("Skipping brain extraction.")
         outputBET = skip_bet_function(outputBiasCorr)
     else:
@@ -510,7 +502,7 @@ if __name__ == "__main__":
                     frac=frac,
                     radius=radius,
                     horizontal_gradient=horizontal_gradient,
-                    use_bet4animal=use_bet4animal,
+                    use_bet4animal=args.bet == "bet4animal",
                     center=args.center)
             finally:
                 stop_event.set()
