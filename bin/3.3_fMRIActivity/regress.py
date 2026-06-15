@@ -252,9 +252,9 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
     else:
         file_nameEPI_BET, mask_file = applyBET(
             meanRegr_File,
-            frac=0.35,
-            radius=45,
-            horizontal_gradient=0.1,
+            frac=0.1,
+            radius=60,
+            horizontal_gradient=0.13,
             use_bet4animal=bet_method == "bet4animal",
             center=center,
             return_mask=True

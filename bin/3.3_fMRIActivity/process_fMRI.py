@@ -26,6 +26,8 @@ import json
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
 
 def copyAtlasOfData(path,post,labels):
     fileALL = glob.glob(path + '/*' + post + '.nii.gz')
@@ -240,9 +242,9 @@ def startProcess(Rawfile_name, bet_method="bet", center=None):
     else:
         file_nameEPI_BET,mask_file = applyBET(
             file_nameEPI,
-            frac=0.35,
-            radius=45,
-            horizontal_gradient=0.1,
+            frac=0.1,
+            radius=60,
+            horizontal_gradient=0.13,
             use_bet4animal=bet_method == "bet4animal",
             center=center,
             return_mask=True
@@ -294,13 +296,11 @@ if __name__ == "__main__":
     else:
         stc = False
 
-    labels = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annotation_50CHANGEDanno_label_IDs.txt'
-    labelNames = os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume.nii.txt'
-    labels2000 = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annotation_50CHANGEDanno_label_IDs+2000.txt'
-    labelNames2000 = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume+2000_rsfMRI.nii.txt'
+    sigma_labels = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
+    labels = sigma_labels
+    labelNames = sigma_labels
+    labels2000 = sigma_labels
+    labelNames2000 = sigma_labels
     input_file = None
     if args.input is not None and args.input is not None:
         input_file = args.input

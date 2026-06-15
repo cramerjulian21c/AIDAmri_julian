@@ -17,6 +17,48 @@ import scipy.io as io
 import correlate_matrix
 
 from datetime import datetime
+
+
+def parse_label_line(line):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+
+    parts = stripped.split()
+    try:
+        label_id = int(float(parts[0]))
+    except (IndexError, ValueError):
+        return None
+
+    if '"' in stripped:
+        label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+    elif "\t" in stripped:
+        tab_parts = stripped.split("\t")
+        label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
+    else:
+        label_name = " ".join(parts[1:])
+
+    return label_id, label_name
+
+
+def load_label_names(label_file):
+    names = []
+    with open(label_file, "r") as label_handle:
+        for line in label_handle:
+            parsed_label = parse_label_line(line)
+            if parsed_label is None:
+                continue
+
+            label_id, label_name = parsed_label
+            if label_id > 0:
+                names.append(label_name + "\n")
+
+    if len(names) == 0:
+        sys.exit("Error: No labels could be read from '%s'." % (label_file,))
+
+    return names
+
+
 def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
     # input data
 
@@ -31,14 +73,14 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
     sPathOut = os.path.abspath(os.path.join(sPathData, os.pardir, postTxt + os.path.basename(sPathData).split('_')[0]))
     sPathOut = sPathOut + '.txt'
     
-    if os.path.basename(labelNames) == "annoVolume.nii.txt":
-        PcorrR_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrR.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
-        PcorrP_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrP.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
-        PcorrZ_matirx_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrZ.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
-    elif os.path.basename(labelNames) == "annoVolume+2000_rsfMRI.nii.txt" :
+    if "Split" in postTxt:
         PcorrR_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrR_Split.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
         PcorrP_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrP_Split.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
         PcorrZ_matirx_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrZ_Split.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
+    else:
+        PcorrR_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrR.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
+        PcorrP_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrP.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
+        PcorrZ_matirx_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrZ.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
     
     
     pcorr_paths = [PcorrR_matrix_path, PcorrP_matrix_path, PcorrZ_matirx_path]
@@ -67,8 +109,12 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
         if maskedData.size > 0:
             m[k] = np.mean(data[msk, :], 0)
 
-    fileNames = open(labelNames, 'r');
-    lines = fileNames.readlines()
+    lines = load_label_names(labelNames)
+    if len(lines) != mask_shape[3]:
+        sys.exit(
+            "Error: label count %i and mask ROI count %i do not match for '%s'." %
+            (len(lines), mask_shape[3], labelNames,)
+        )
     mT = np.transpose(m)
     np.savetxt(sPathOut, mT, fmt='%.4f', delimiter=' ')
     matPathOut = os.path.join(os.path.dirname(sPathOut), os.path.basename(sPathOut) + '.mat')

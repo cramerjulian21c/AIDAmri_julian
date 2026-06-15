@@ -17,6 +17,80 @@ import numpy as np
 import nibabel as nib
 from datetime import datetime
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+DEFAULT_SIGMA_LABEL_FILE = os.path.join(
+    REPO_ROOT,
+    "lib",
+    "sigma",
+    "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt",
+)
+
+
+def parse_label_line(line):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+
+    parts = stripped.split()
+    try:
+        label_id = int(float(parts[0]))
+    except (IndexError, ValueError):
+        return None
+
+    if '"' in stripped:
+        label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+    elif "\t" in stripped:
+        tab_parts = stripped.split("\t")
+        label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
+    else:
+        label_name = " ".join(parts[1:])
+
+    return label_id, label_name
+
+
+def load_seed_labels(label_file):
+    iatlas = []
+    labels = []
+    with open(label_file, "r") as label_handle:
+        rows = label_handle.readlines()
+
+    parsed_legacy_rows = False
+    for row in rows:
+        stripped = row.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if ",\t" in stripped:
+            parts = stripped.split(",\t")
+            if len(parts) >= 2:
+                try:
+                    iatlas.append(int(parts[0]))
+                    labels.append(int(float(parts[1])))
+                    parsed_legacy_rows = True
+                except ValueError:
+                    continue
+            continue
+
+        parsed_label = parse_label_line(stripped)
+        if parsed_label is None:
+            continue
+
+        label_id, _ = parsed_label
+        if label_id > 0:
+            iatlas.append(1)
+            labels.append(label_id)
+
+    if len(labels) == 0:
+        sys.exit("Error: No seed labels could be read from '%s'." % (label_file,))
+
+    if parsed_legacy_rows:
+        print("Using legacy seed-label table: %s" % label_file)
+    else:
+        print("Using atlas label table as seed list: %s" % label_file)
+
+    return iatlas, labels
+
+
 def startSeedPoint(in_labels,in_atlas):
 
 
@@ -46,12 +120,7 @@ def startSeedPoint(in_labels,in_atlas):
     # print(get_date())
 
     # read labels text file
-    iatlas = []
-    labels = []
-
-    for row in read_csv(sPathLabels):
-        iatlas.append(int(row.split(',\t')[0]))
-        labels.append(int(row.split(',\t')[1]))
+    iatlas, labels = load_seed_labels(sPathLabels)
     # print("iatlas:", iatlas)
     # print("labels:", labels)
 
@@ -195,7 +264,7 @@ def create_rois_3(iatlas, labels, labels_hdr, labels_data, datatype=None, preser
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create atlas seed ROIs.')
     parser.add_argument('-i', '--in_atlas', nargs='+', help='Input 3D atlas labels file names (NIfTI)')
-    parser.add_argument('-l','--in_labels', help='Input labels text file name',default='/Volumes/AG_Aswendt_Share/Scratch/Asw_fMRI2AllenBrain_Data/annotation_50CHANGEDanno_label_IDs.txt')
+    parser.add_argument('-l','--in_labels', help='Input labels text file name', default=DEFAULT_SIGMA_LABEL_FILE)
     parser.add_argument('-o', '--out_rois', help='Output 4D seed ROIs file name')
     parser.add_argument('-p', '--preserve', action='store_true', help='Preserve label values')
     parser.add_argument('-t', '--datatype', type=int, choices=[2, 4, 8, 16], help='Data type (2: char, 4: short, 8: int, 16: float)')
@@ -223,12 +292,7 @@ if __name__ == '__main__':
     #print(get_date())
 
     # read labels text file
-    iatlas = []
-    labels = []
-
-    for row in read_csv(sPathLabels):
-        iatlas.append(int(row.split(',\t')[0]))
-        labels.append(int(row.split(',\t')[1]))
+    iatlas, labels = load_seed_labels(sPathLabels)
     #print("iatlas:", iatlas)
     #print("labels:", labels)
 
