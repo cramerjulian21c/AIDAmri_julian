@@ -66,42 +66,56 @@ def load_label_table(label_file):
     label_names = []
 
     with open(label_file, 'r') as label_handle:
-        for line in label_handle:
-            line = line.strip()
-            if not line:
+        for line_number, line in enumerate(label_handle, start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
                 continue
-            parts = line.split('\t', 1)
-            if len(parts) != 2:
-                sys.exit("Error: Invalid label line in '%s': %s" % (label_file, line,))
-            label_id = int(parts[0])
-            label_name = parts[1]
+
+            parts = stripped.split()
+            try:
+                label_id = int(float(parts[0]))
+            except (IndexError, ValueError):
+                print("Warning: Skipping invalid label line %i in '%s'." % (line_number, label_file,))
+                continue
+
+            if '"' in stripped:
+                label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+            elif "\t" in stripped:
+                tab_parts = stripped.split("\t")
+                label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
+            else:
+                label_name = " ".join(parts[1:])
+
             label_ids.append(label_id)
             label_names_by_id[label_id] = label_name
             label_names.append(label_name)
 
+    if len(label_ids) == 0:
+        sys.exit("Error: No labels could be read from '%s'." % (label_file,))
+
     return np.array(label_ids, dtype=int), label_names_by_id, label_names
 
 
-def calculate_stroke_overlap(brain_file, annotation_file, ara_template_file, stroke_mask_file,
+def calculate_stroke_overlap(brain_file, annotation_file, Ref_template_file, stroke_mask_file,
                              incidence_lesion_mask_file, output_folder, label_file):
 
-    # Load the reference Allen/ARA template used for the affected-regions overlay.
-    ara_template_img  = nii.load(ara_template_file)
-    ara_template_labels = ara_template_img.get_fdata()
-    affected_template_labels = np.zeros([np.size(ara_template_labels, 0), np.size(ara_template_labels, 1), np.size(ara_template_labels, 2)])
+    # Load the reference atlas used for the affected-regions overlay.
+    Ref_template_img  = nii.load(Ref_template_file)
+    Ref_template_labels = Ref_template_img.get_fdata()
+    affected_template_labels = np.zeros([np.size(Ref_template_labels, 0), np.size(Ref_template_labels, 1), np.size(Ref_template_labels, 2)])
 
-    # Load label IDs and names from the left/right-separated ARA label table.
+    # Load label IDs and names from the atlas label table.
     all_label_ids, label_names_by_id, labelNames = load_label_table(label_file)
     atlas_label_ids = all_label_ids.copy()
 
-    # Save the template-space IncidenceData lesion mask labelled by the ARA atlas.
+    # Save the template-space IncidenceData lesion mask labelled by the atlas.
     incidence_lesion_mask_img = nii.load(incidence_lesion_mask_file)
     incidence_lesion_mask = incidence_lesion_mask_img.get_fdata()
     incidence_lesion_mask[incidence_lesion_mask > 0.0] = 1.0
     incidence_lesion_mask[incidence_lesion_mask <= 0.0] = 0.0
 
-    ensure_same_grid(incidence_lesion_mask_img, ara_template_img, "incidence atlas")
-    incidence_atlas = np.round(ara_template_labels)
+    ensure_same_grid(incidence_lesion_mask_img, Ref_template_img, "incidence atlas")
+    incidence_atlas = np.round(Ref_template_labels)
 
     labelled_incidence_lesion = incidence_atlas*incidence_lesion_mask
     labelled_incidence_lesion_img = nii.Nifti1Image(labelled_incidence_lesion, incidence_lesion_mask_img.affine)
@@ -155,15 +169,15 @@ def calculate_stroke_overlap(brain_file, annotation_file, ara_template_file, str
     atlas_label_id_set = set(int(label_id) for label_id in atlas_label_ids)
 
     # Create an affected-region overlay in the reference atlas space.
-    affected_template_mask = np.isin(ara_template_labels, affected_label_ids)
-    affected_template_labels[affected_template_mask] = ara_template_labels[affected_template_mask]
+    affected_template_mask = np.isin(Ref_template_labels, affected_label_ids)
+    affected_template_labels[affected_template_mask] = Ref_template_labels[affected_template_mask]
 
     # Save the affected regions as a NIfTI overlay.
-    affected_regions_img = nii.Nifti1Image(affected_template_labels, ara_template_img.affine)
+    affected_regions_img = nii.Nifti1Image(affected_template_labels, Ref_template_img.affine)
     affected_regions_img.header.set_xyzt_units('mm')
     brkraw_nifti_file = find_brkraw_nifti(output_folder)
     affected_regions_prefix = '%s_%s_' % (nifti_name_without_extension(brkraw_nifti_file),
-                                          nifti_name_without_extension(ara_template_file))
+                                          nifti_name_without_extension(Ref_template_file))
     #Create affected Regions folder
     affected_regions_dir = os.path.join(output_folder, 'affected_Regions')
     os.makedirs(affected_regions_dir, exist_ok=True)
@@ -218,9 +232,9 @@ def calculate_stroke_overlap(brain_file, annotation_file, ara_template_file, str
     affected_label_names = [affected_label_names_by_id.get(int(label_id), "") for label_id in atlas_label_ids]
     atlas_label_ids = np.column_stack((atlas_label_ids, regionAffectPercent))
     label_mat = {}
-    label_mat['ABALabelIDs'] = atlas_label_ids
-    label_mat['ABANames'] = affected_label_names
-    label_mat['ABAlabels'] = labelNames
+    label_mat['SIGLabelIDs'] = atlas_label_ids
+    label_mat['SIGNames'] = affected_label_names
+    label_mat['SIGlabels'] = labelNames
     label_mat['regionStrokeVolumeMM3'] = regionStrokeVolumeMM3
     label_mat['volumePer'] = (strokeVolumeInCubicMM / brainVolumeInCubicMM) * 100
     label_mat['volumeMM'] = strokeVolumeInCubicMM
@@ -247,15 +261,15 @@ def find_single_file(input_folder, pattern, description):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Calculate incidence sizes of ARA regions. You do not need to enter single files, but the path to the .../anat folder which includes the T2 data')
+    parser = argparse.ArgumentParser(description='Calculate incidence sizes of atlas regions. You do not need to enter single files, but the path to the .../anat folder which includes the T2 data')
     requiredNamed = parser.add_argument_group('Required named arguments')
     requiredNamed.add_argument('-i', '--inputFolder', help='.../anat', required=True)
 
-    parser.add_argument('-a', '--allenBrain_anno', help='File: left/right-separated ARA annotation template', nargs='?', type=str,
-                        default=os.path.join(REPO_ROOT, 'lib', 'ARA_annotationR+2000.nii.gz'))
+    parser.add_argument('-a', '--RefBrain_anno', help='File: reference atlas annotation template', nargs='?', type=str,
+                        default=os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz'))
 
     input_folder = None
-    allen_template_file = None
+    template_file = None
     output_folder = None
 
     args = parser.parse_args()
@@ -268,14 +282,14 @@ if __name__ == "__main__":
         sys.exit("Error: '%s' is not an existing directory." % (input_folder,))
 
 
-    if args.allenBrain_anno is not None:
-        allen_template_file = args.allenBrain_anno
-    if not os.path.isfile(allen_template_file):
-        sys.exit("Error: '%s' is not an existing file." % (allen_template_file,))
+    if args.RefBrain_anno is not None:
+        template_file = args.RefBrain_anno
+    if not os.path.isfile(template_file):
+        sys.exit("Error: '%s' is not an existing file." % (template_file,))
 
     # Resolve static label resources from the repository lib folder.
-    label_file = os.path.join(REPO_ROOT, 'lib', 'ARA_annotationR+2000.nii.txt')
-    ara_template_file = allen_template_file
+    label_file = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
+    Ref_template_file = template_file
 
     # Collect exactly one required subject file from the input folder.
     stroke_mask_file = find_single_file(input_folder, '*Stroke_mask.nii.gz', 'stroke mask')
@@ -285,6 +299,6 @@ if __name__ == "__main__":
 
     print("1 folder will be processed...")
 
-    # Calculate ARA-region lesion overlap and write NIfTI, CSV, and MAT outputs.
-    calculate_stroke_overlap(brain_file, annotation_file, ara_template_file, stroke_mask_file,
+    # Calculate atlas-region lesion overlap and write NIfTI, CSV, and MAT outputs.
+    calculate_stroke_overlap(brain_file, annotation_file, Ref_template_file, stroke_mask_file,
                              incidence_lesion_mask_file, output_folder, label_file)

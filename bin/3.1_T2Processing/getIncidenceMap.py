@@ -8,6 +8,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
 # --- Fonts & Text Display ---
 matplotlib.rcParams['svg.fonttype'] = 'none'     #text remains editable in SVG
 matplotlib.rcParams['pdf.fonttype'] = 42         # Editable text in PDF (Type 42)
@@ -38,13 +40,13 @@ def validate_session(session):
     return session
 
 
-def heatMap(incidenceMap, araVol, outputLocation, prefix):
+def heatMap(incidenceMap, RefVol, outputLocation, prefix):
     maxV = int(np.max(incidenceMap))
     fig, axes = plt.subplots(nrows=3, ncols=4)
     z_slices = np.linspace(0, incidenceMap.shape[2] - 1, 12, dtype=int)
     for ax, z_index in zip(axes.flat, z_slices):
         im = ax.imshow(np.transpose(np.round(incidenceMap[:, :, z_index])), cmap='gnuplot', vmin=0, vmax=maxV)
-        ax.imshow(np.transpose(araVol[:, :, z_index]), alpha=0.55, cmap='gray')
+        ax.imshow(np.transpose(RefVol[:, :, z_index]), alpha=0.55, cmap='gray')
         ax.axis('off')
 
     fig.subplots_adjust(right=0.8)
@@ -68,10 +70,10 @@ def heatMap(incidenceMap, araVol, outputLocation, prefix):
     plt.close(fig)
 
 
-def incidenceMap2(path_listInc, araTemplate, outputLocation, prefix):
-    araDataTemplate = nii.load(araTemplate)
-    realAraImg = np.asanyarray(araDataTemplate.dataobj)
-    overlaidIncidences = np.zeros(realAraImg.shape, dtype=np.uint16)
+def incidenceMap2(path_listInc, RefTemplate, outputLocation, prefix):
+    RefDataTemplate = nii.load(RefTemplate)
+    realRefImg = np.asanyarray(RefDataTemplate.dataobj)
+    overlaidIncidences = np.zeros(realRefImg.shape, dtype=np.uint16)
     bar = progressbar.ProgressBar()
     for fileIndex in bar(range(len(path_listInc))):
         dataMRI = nii.load(path_listInc[fileIndex])
@@ -82,7 +84,7 @@ def incidenceMap2(path_listInc, araTemplate, outputLocation, prefix):
                 "Error: Shape mismatch for '%s'. Mask shape is %s, template shape is %s." %
                 (path_listInc[fileIndex], volumeMRI.shape, overlaidIncidences.shape,)
             )
-        if not np.allclose(dataMRI.affine, araDataTemplate.affine, atol=1e-4):
+        if not np.allclose(dataMRI.affine, RefDataTemplate.affine, atol=1e-4):
             sys.exit(
                 "Error: Affine mismatch for '%s'. Mask and template are not in the same grid." %
                 (path_listInc[fileIndex],)
@@ -95,13 +97,13 @@ def incidenceMap2(path_listInc, araTemplate, outputLocation, prefix):
 
         overlaidIncidences += volumeMRI
 
-    overlayNII = nii.Nifti1Image(overlaidIncidences, araDataTemplate.affine)
+    overlayNII = nii.Nifti1Image(overlaidIncidences, RefDataTemplate.affine)
     # remove "heatmap_" from prefix
     name_part = prefix.replace("heatmap_", "", 1)
 
     output_file = os.path.join(outputLocation, f"incMap_{name_part}.nii.gz")
     nii.save(overlayNII, output_file)
-    heatMap(incidenceMap=overlaidIncidences, araVol=realAraImg, outputLocation=outputLocation, prefix=prefix)
+    heatMap(incidenceMap=overlaidIncidences, RefVol=realRefImg, outputLocation=outputLocation, prefix=prefix)
     max_overlap = int(np.max(overlaidIncidences))
     print("Maximum number of subjects overlapping at any voxel in the incidence volume:", max_overlap)
 
@@ -126,14 +128,14 @@ if __name__ == "__main__":
     parser.add_argument('--session', help='Session folder to include, e.g. ses-PT3', required=True)
     parser.add_argument('-o', '--outputLocation', help='Directory: Output location for the heat map', default=None)
     parser.add_argument('-n', '--heatmapName', help='Optional output name for the heatmap files', default=None)
-    parser.add_argument('-a', '--allenBrainTemplate', help='File: Annotations of Allen Brain', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir, 'lib', 'average_template_50.nii.gz')))
+    parser.add_argument('-a', '--RefBrainTemplate', help='File: reference atlas annotation/template', nargs='?', type=str,
+                        default=os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz'))
 
     args = parser.parse_args()
 
     inputLocation = args.inputLocation
     outputLocation = args.outputLocation
-    allenBrainTemplate = args.allenBrainTemplate
+    RefBrainTemplate = args.RefBrainTemplate
     heatmapName = args.heatmapName
     session = validate_session(args.session)
 
@@ -151,8 +153,8 @@ if __name__ == "__main__":
 
     os.makedirs(outputLocation, exist_ok=True)
 
-    if not os.path.exists(allenBrainTemplate):
-        sys.exit("Error: '%s' is not an existing file." % (allenBrainTemplate,))
+    if not os.path.exists(RefBrainTemplate):
+        sys.exit("Error: '%s' is not an existing file." % (RefBrainTemplate,))
 
     regInc_list = findIncData(inputLocation, session)
 
@@ -160,5 +162,5 @@ if __name__ == "__main__":
         sys.exit("Error: No masked strokes found for session '%s' in the provided directory." % (session,))
 
     print("'%i' folders from session '%s' are part of the incidence map." % (len(regInc_list), session,))
-    incidenceMap2(regInc_list, allenBrainTemplate, outputLocation, prefix)
+    incidenceMap2(regInc_list, RefBrainTemplate, outputLocation, prefix)
     sys.exit(0)
