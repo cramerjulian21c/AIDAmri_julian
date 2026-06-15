@@ -43,6 +43,31 @@ import shutil
 import subprocess
 import pandas as pd
 
+
+def parse_label_line(line, line_number=None, label_file=None):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+
+    parts = stripped.split()
+    try:
+        label_id = int(float(parts[0]))
+    except (IndexError, ValueError):
+        if line_number is not None and label_file is not None:
+            print(f"Warning: Skipping invalid label line {line_number} in '{label_file}'.")
+        return None
+
+    if '"' in stripped:
+        label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+    elif "\t" in stripped:
+        tab_parts = stripped.split("\t")
+        label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
+    else:
+        label_name = " ".join(parts[1:])
+
+    return label_id, label_name
+
+
 def scaleBy10(input_path, inv):
     data = nib.load(input_path)
     image_data = data.get_fdata()
@@ -280,21 +305,15 @@ def create_stroke_mask_label_file(stroke_mask_anno_path):
     #Look for matching line in *AnnoSplit_parental.txt
     matched_lines = []
     with open(lut_path, "r") as lut_file:
-        for line in lut_file:
-            stripped = line.strip()
-            if not stripped:
+        for line_number, line in enumerate(lut_file, start=1):
+            parsed_label = parse_label_line(line, line_number, lut_path)
+            if parsed_label is None:
                 continue
 
-            label_parts = stripped.split(None, 1)
-            label_token = label_parts[0] #Grey value
-            try:
-                label_id = int(float(label_token))
-            except ValueError:
-                continue
+            label_id, label_name = parsed_label
 
             if label_id in unique_labels: #filter
-                label_name = label_parts[1] if len(label_parts) > 1 else ""
-                matched_lines.append(f"{label_token} Stroke_{label_name}".rstrip("_"))
+                matched_lines.append(f"{label_id} Stroke_{label_name}".rstrip("_"))
 
     if not matched_lines:
         print(
