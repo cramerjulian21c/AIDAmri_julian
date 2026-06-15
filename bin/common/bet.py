@@ -188,7 +188,7 @@ def applyBET(
         print("Using BET for animal brains")
         print("Note: bet4animal requires that the AC-PC line of brain is parallel to Y-axis")
         w_value = 2  # smooth the surface (lissencephalic weighting)
-        species_id = 6  #-> mouse # species_id = 5 -> rat
+        species_id = 5  #-> rat
         output_file = os.path.join(
             output_path,
             os.path.basename(input_file).split(".")[0] + "AnimalBet.nii.gz",
