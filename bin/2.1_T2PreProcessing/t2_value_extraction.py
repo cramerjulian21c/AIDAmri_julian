@@ -12,8 +12,8 @@ def get_default_label_file(script_dir):
     candidates = [
         os.path.join(repo_root, "lib", "sigma", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt"),
         os.path.join(repo_root, "lib", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt"),
-        os.path.join(repo_root, "lib", "ARA_annotationR+2000.nii.txt"),
-        os.path.join(script_dir, "ARA_annotationR+2000.nii.txt"),
+        os.path.join(repo_root, "lib", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt"),
+        os.path.join(script_dir, "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt"),
     ]
     for candidate in candidates:
         if os.path.exists(candidate):

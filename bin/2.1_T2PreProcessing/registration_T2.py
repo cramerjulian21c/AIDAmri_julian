@@ -149,22 +149,22 @@ def find_nearest(array,value):
     idx = (np.abs(array-value)).argmin()
     return array[idx]
 
-def clearAnno(araAnno,realBrain_anno,outfile):
-    araData = nii.load(araAnno)
-    araVol = np.asanyarray(araData.dataobj)
-    nullValues = araVol < 0.0
-    araVol[nullValues] = 0.0
-    araVol = np.memmap.round(araVol)
+def clearAnno(SIGAnno,realBrain_anno,outfile):
+    SIGData = nii.load(SIGAnno)
+    SIGVol = np.asanyarray(SIGData.dataobj)
+    nullValues = SIGVol < 0.0
+    SIGVol[nullValues] = 0.0
+    SIGVol = np.memmap.round(SIGVol)
 
     realData = nii.load(realBrain_anno)
     realVal = np.asanyarray(realData.dataobj)
     realVal = realVal.tolist()
     uniqueList = np.unique(realVal)
 
-    for i in np.nditer(araVol,op_flags=['readwrite']):
+    for i in np.nditer(SIGVol,op_flags=['readwrite']):
         i[...] = find_nearest(uniqueList, i)
 
-    scaledNiiData = nii.Nifti1Image(araVol, araData.affine)
+    scaledNiiData = nii.Nifti1Image(SIGVol, SIGData.affine)
     hdrIn = scaledNiiData.header
     hdrIn.set_xyzt_units('mm')
     output_file = os.path.join(outfile, 'reconstructedAnno.nii.gz')
@@ -179,17 +179,6 @@ def find_mask(inputVolume):
 #%% Program
 
 
-#mice
-#default_template = os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/NP_template_sc0.nii.gz'
-#default_ReferenceBrain_template  = os.path.abspath(
-#                        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/average_template_50.nii.gz'
-#default_ReferenceBrain_anno = os.path.abspath(
-#                        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annotation_50CHANGEDanno.nii.gz'
-#default_splitAnno = os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/ARA_annotationR+2000.nii.gz'
-#default_anno_rsfMRI = os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/annoVolume.nii.gz'
-#default_split_annorsfMRI = os.path.abspath(
-#                        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume+2000_rsfMRI.nii.gz'
-
 default_template = os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/sigma/SIGMA_InVivo_Brain_Template_Masked.nii.gz'
 default_ReferenceBrain_template  = os.path.abspath(
                         os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/sigma/SIGMA_InVivo_Brain_Template_Masked.nii.gz'
@@ -203,7 +192,7 @@ default_split_annorsfMRI = os.path.abspath(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Registration from ABA to T2 Data')
+    parser = argparse.ArgumentParser(description='Registration from Reference to T2 Data')
 
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i', '--inputVolume', help='Path to input file', required=True)
