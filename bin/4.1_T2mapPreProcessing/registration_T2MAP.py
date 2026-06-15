@@ -28,7 +28,11 @@ import glob
 import subprocess
 import shlex
 
-def regABA2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile):
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+DEFAULT_SIGMA_ATLAS = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz')
+
+
+def regRef2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_parental,anno_parental,bsplineMatrix,outfile):
 
     outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
     outputAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixAff.txt')
@@ -65,10 +69,10 @@ def regABA2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,b
         raise    
         
 
-    # resample split rsfMRI Annotation
-    outputAnnoSplit_rsfMRI = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit_parental.nii.gz')
+    # resample split parental annotation
+    outputAnnoSplit_parental = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit_parental.nii.gz')
     
-    command = f"reg_resample -ref {brain_anno} -flo {splitAnno_rsfMRI} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_rsfMRI}"
+    command = f"reg_resample -ref {brain_anno} -flo {splitAnno_parental} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_parental}"
     command_args = shlex.split(command)
     try:
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
@@ -77,7 +81,7 @@ def regABA2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,b
         print(f'Error while executing the command: {command_args} Errorcode: {str(e)}')
         raise 
         
-    command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_rsfMRI} -trans {outputAff} -inter 0 -res {outputAnnoSplit_rsfMRI}"
+    command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_parental} -trans {outputAff} -inter 0 -res {outputAnnoSplit_parental}"
     command_args = shlex.split(command)
     try:
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
@@ -112,16 +116,18 @@ def find_relatedData(pathBase):
     pathT2 =  glob.glob(pathBase+'*/anat/*Bet.nii.gz', recursive=False)
     pathStroke_mask = glob.glob(pathBase + '*/anat/*Stroke_mask.nii.gz', recursive=False)
     pathAnno = glob.glob(pathBase + '*/anat/*Anno.nii.gz', recursive=False)
-    pathAllen = glob.glob(pathBase + '*/anat/*Allen.nii.gz', recursive=False)
+    pathTemplate = glob.glob(pathBase + '*/anat/*TemplateAff.nii.gz', recursive=False)
+    if len(pathTemplate) == 0:
+        pathTemplate = glob.glob(pathBase + '*/anat/*Template.nii.gz', recursive=False)
     bsplineMatrix =  glob.glob(pathBase + '*/anat/*MatrixBspline.nii', recursive=False)
-    return pathT2,pathStroke_mask,pathAnno,pathAllen,bsplineMatrix
+    return pathT2,pathStroke_mask,pathAnno,pathTemplate,bsplineMatrix
 
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Registration Allen Brain to T2map')
+    parser = argparse.ArgumentParser(description='Registration reference brain to T2map')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i', '--inputVolume', help='Path to the BET file of T2map data after preprocessing',
                                required=True)
@@ -129,11 +135,11 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask (for example: P5)', nargs='?', type=str,
                         default=None)
     parser.add_argument('-s', '--splitAnno', help='Split annotations atlas', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/ARA_annotationR+2000.nii.gz')
-    parser.add_argument('-f', '--splitAnno_rsfMRI', help='Split annotations atlas for rsfMRI/T2map', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/annoVolume+2000_rsfMRI.nii.gz')
-    parser.add_argument('-a', '--anno_rsfMRI', help='Parental Annotations atlas for rsfMRI/T2map', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/annoVolume.nii.gz')
+                        default=DEFAULT_SIGMA_ATLAS)
+    parser.add_argument('-f', '--splitAnno_parental', '--splitAnno_rsfMRI', dest='splitAnno_parental', help='Split annotations atlas for parental/T2map output', nargs='?', type=str,
+                        default=DEFAULT_SIGMA_ATLAS)
+    parser.add_argument('-a', '--anno_parental', '--anno_rsfMRI', dest='anno_parental', help='Parental annotations atlas for T2map output', nargs='?', type=str,
+                        default=DEFAULT_SIGMA_ATLAS)
 
     args = parser.parse_args()
 
@@ -141,8 +147,8 @@ if __name__ == "__main__":
     inputVolume = None
     refStrokePath = None
     splitAnno = None
-    splitAnno_rsfMRI = None
-    anno_rsfMRI = None
+    splitAnno_parental = None
+    anno_parental = None
 
     if args.inputVolume is not None:
         inputVolume = args.inputVolume
@@ -206,17 +212,17 @@ if __name__ == "__main__":
     if not os.path.exists(splitAnno):
         sys.exit("Error: '%s' is not an existing directory." % (splitAnno,))
 
-    if args.splitAnno_rsfMRI is not None:
-        splitAnno_rsfMRI = args.splitAnno_rsfMRI
-    if not os.path.exists(splitAnno_rsfMRI):
-        sys.exit("Error: '%s' is not an existing directory." % (splitAnno_rsfMRI,))
+    if args.splitAnno_parental is not None:
+        splitAnno_parental = args.splitAnno_parental
+    if not os.path.exists(splitAnno_parental):
+        sys.exit("Error: '%s' is not an existing directory." % (splitAnno_parental,))
 
-    if args.anno_rsfMRI is not None:
-        anno_rsfMRI = args.anno_rsfMRI
-    if not os.path.exists(anno_rsfMRI):
-        sys.exit("Error: '%s' is not an existing directory." % (anno_rsfMRI,))
+    if args.anno_parental is not None:
+        anno_parental = args.anno_parental
+    if not os.path.exists(anno_parental):
+        sys.exit("Error: '%s' is not an existing directory." % (anno_parental,))
 
-    output = regABA2T2map(inputVolume, stroke_mask, refStroke_mask, T2data, brain_template, brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile)
+    output = regRef2T2map(inputVolume, stroke_mask, refStroke_mask, T2data, brain_template, brain_anno, splitAnno,splitAnno_parental,anno_parental,bsplineMatrix,outfile)
 
     current_dir = os.path.dirname(inputVolume)
     search_string = os.path.join(current_dir, "*t2map.nii.gz")
@@ -233,4 +239,3 @@ if __name__ == "__main__":
         continue
 
     print("Registration completed")
-
