@@ -40,26 +40,26 @@ if __name__ == "__main__":
         curPath = os.path.dirname(listAtlas[i])
         dti = glob.glob(curPath+'/*.md.nii.gz')
         if dti:
-            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_ARA.txt')
-            os.system('python DTIdata_extract.py ' +dti[0]+ ' ' +listAtlas[i]+ ' -t ./acronyms_splitted_ARA.txt')
+            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
+            os.system('python DTIdata_extract.py ' +dti[0]+ ' ' +listAtlas[i])
     for i in range(np.size(listAtlas)):
         print(listAtlas[i])
         curPath = os.path.dirname(listAtlas[i])
         dti = glob.glob(curPath + '/*.fa0.nii.gz')
         if dti:
-            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_ARA.txt')
-            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_splitted_ARA.txt')
+            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
+            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
     for i in range(np.size(listAtlas)):
         print(listAtlas[i])
         curPath = os.path.dirname(listAtlas[i])
         dti = glob.glob(curPath + '/*.rd.nii.gz')
         if dti:
-            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_ARA.txt')
-            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_splitted_ARA.txt')
+            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
+            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
     for i in range(np.size(listAtlas)):
         print(listAtlas[i])
         curPath = os.path.dirname(listAtlas[i])
         dti = glob.glob(curPath + '/*.ad.nii.gz')
         if dti:
-            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_ARA.txt')
-            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i] + ' -t ./acronyms_splitted_ARA.txt')
+            print('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
+            os.system('python DTIdata_extract.py ' + dti[0] + ' ' + listAtlas[i])
