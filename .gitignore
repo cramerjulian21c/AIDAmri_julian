@@ -148,3 +148,6 @@ CMakeFiles/
 .DS_Store
 *.m~
 .codex/
+
+.codex
+.codex/
