@@ -202,7 +202,14 @@ def create_txt_file(file, data):
 def delete_txt_file(file):
     os.remove(file)
 
-def startProcess(Rawfile_name, bet_method="bet", center=None):
+def startProcess(
+    Rawfile_name,
+    bet_method="bet",
+    frac=0.1,
+    radius=60,
+    gradient=0.13,
+    center=None,
+):
     # generate folder for images
     origin_Path = os.path.dirname(Rawfile_name)
     proc_Path = os.path.join(origin_Path, 'rs-fMRI_niiData')
@@ -242,9 +249,9 @@ def startProcess(Rawfile_name, bet_method="bet", center=None):
     else:
         file_nameEPI_BET,mask_file = applyBET(
             file_nameEPI,
-            frac=0.1,
-            radius=60,
-            horizontal_gradient=0.13,
+            frac=frac,
+            radius=radius,
+            horizontal_gradient=gradient,
             use_bet4animal=bet_method == "bet4animal",
             center=center,
             return_mask=True
@@ -287,6 +294,9 @@ if __name__ == "__main__":
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
     parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
                         help='Brain extraction method for fMRI process: skip, bet or bet4animal. Default: bet')
+    parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
+    parser.add_argument('--bet-radius', type=int, default=60, help='BET head radius in mm')
+    parser.add_argument('--bet-gradient', type=float, default=0.13, help='BET horizontal gradient')
     parser.add_argument('-ctr', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
 
     args = parser.parse_args()
@@ -310,6 +320,9 @@ if __name__ == "__main__":
     mcfFile_name = startProcess(
         input_file,
         bet_method=args.bet,
+        frac=args.bet_frac,
+        radius=args.bet_radius,
+        gradient=args.bet_gradient,
         center=args.center
     )
 
@@ -346,6 +359,9 @@ if __name__ == "__main__":
             slice_order_path,
             costum_timings_path,
             bet_method=args.bet,
+            frac=args.bet_frac,
+            radius=args.bet_radius,
+            gradient=args.bet_gradient,
             center=args.center
         )
 
@@ -362,6 +378,9 @@ if __name__ == "__main__":
             TR,
             stc,
             bet_method=args.bet,
+            frac=args.bet_frac,
+            radius=args.bet_radius,
+            gradient=args.bet_gradient,
             center=args.center
         )
         print(f"sfrgr_file {sfrgr_file}")
