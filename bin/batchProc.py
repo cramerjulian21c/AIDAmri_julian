@@ -187,8 +187,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -f {cfg["t2_frac"]}'
                     if cfg.get("t2_radius") is not None:
                         command += f' -r {cfg["t2_radius"]}'
-                    if cfg.get("t2_horizontal_gradient") is not None:
-                        command += f' -g {cfg["t2_horizontal_gradient"]}'
+                    if cfg.get("t2_gradient") is not None:
+                        command += f' -g {cfg["t2_gradient"]}'
                     if cfg.get("t2_center") is not None:
                         cx, cy, cz = cfg["t2_center"]
                         command += f' -c {cx} {cy} {cz}'
@@ -226,22 +226,17 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     #print(message, flush=True)
                     return 0
                 os.chdir(os.path.join(cwd, '3.1_T2Processing'))
-                command = f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}'
-                result = run_subprocess(command, dataFormat, step)
-                if isinstance(result, tuple) and len(result) == 4:
-                    os.chdir(os.path.join(cwd, '3.1_T2Processing'))
+                if cfg.get("t2_incidence_script") == "detailed":
+                    command = f'python getIncidenceSize.py -i {_quote(currentPath_wData)}'
+                    result = run_subprocess(command, dataFormat, step, anat_process=True)
+                else:
+                    command = f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}'
+                    result = run_subprocess(command, dataFormat, step)
 
-                    r_par = run_subprocess(f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}',
-                                           dataFormat, step)
+                if result != 0:
+                    errorList.append(result)
 
-                    if r_par != 0:
-                        errorList.append(r_par)
-                        r_ser = run_subprocess(f'python getIncidenceSize.py -i {_quote(currentPath_wData)}',
-                                               dataFormat, step, anat_process=True)
-                        if r_ser != 0:
-                            errorList.append(r_ser)
-
-                    os.chdir(cwd)
+                os.chdir(cwd)
 
 
         elif dataFormat == 'func':
@@ -253,6 +248,15 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
                     command += f' --bet {cfg["func_bet"]}'
+                    if cfg.get("func_frac") is not None:
+                        command += f' -f {cfg["func_frac"]}'
+                    if cfg.get("func_radius") is not None:
+                        command += f' -r {cfg["func_radius"]}'
+                    if cfg.get("func_gradient") is not None:
+                        command += f' -g {cfg["func_gradient"]}'
+                    if cfg.get("func_center") is not None:
+                        cx, cy, cz = cfg["func_center"]
+                        command += f' -c {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -279,10 +283,23 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
                     command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc} --bet {cfg["func_bet"]}'
+                    if cfg.get("func_frac") is not None:
+                        command += f' --bet-frac {cfg["func_frac"]}'
+                    if cfg.get("func_radius") is not None:
+                        command += f' --bet-radius {cfg["func_radius"]}'
+                    if cfg.get("func_gradient") is not None:
+                        command += f' --bet-gradient {cfg["func_gradient"]}'
+                    if cfg.get("func_center") is not None:
+                        cx, cy, cz = cfg["func_center"]
+                        command += f' -ctr {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                     os.chdir(cwd)
+                else:
+                    message = f'Could not find *EPI.nii.gz in {str(currentPath_wData)}';
+                    logging.error(message)
+                    errorList.append(message)
         elif dataFormat == 't2map':
             if step == "preprocess":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
@@ -292,6 +309,15 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2map_bias_method"):
                         command += f' -b {cfg["t2map_bias_method"]}'
                     command += f' --bet {cfg["t2map_bet"]}'
+                    if cfg.get("t2map_frac") is not None:
+                        command += f' -f {cfg["t2map_frac"]}'
+                    if cfg.get("t2map_radius") is not None:
+                        command += f' -r {cfg["t2map_radius"]}'
+                    if cfg.get("t2map_gradient") is not None:
+                        command += f' -g {cfg["t2map_gradient"]}'
+                    if cfg.get("t2map_center") is not None:
+                        cx, cy, cz = cfg["t2map_center"]
+                        command += f' -c {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -342,8 +368,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -f {cfg["dwi_frac"]}'
                     if cfg.get("dwi_radius") is not None:
                         command += f' -r {cfg["dwi_radius"]}'
-                    if cfg.get("dwi_horizontal_gradient") is not None:
-                        command += f' -g {cfg["dwi_horizontal_gradient"]}'
+                    if cfg.get("dwi_gradient") is not None:
+                        command += f' -g {cfg["dwi_gradient"]}'
 
                     # Bias field
                     # dwi_bias_method with choices ["mico",“ants”], default=None
@@ -423,6 +449,10 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
+                else:
+                    message = f'Could not find DWI input for DSI processing in {str(currentPath_wData)}';
+                    logging.error(message)
+                    errorList.append(message)
                 os.chdir(cwd)
         else:
             message = 'The data folders'' names do not match anat, dwi, func or t2map';
@@ -491,7 +521,7 @@ if __name__ == "__main__":
             "Runs preprocessing, registration and processing steps for T2, DWI, fMRI and T2map.\n\n"
             "Example:\n"
             "python batchProc.py -i /path/to/proc_data -t anat dwi "
-            "--t2-frac 0.15 --t2-bias-method mico "
+            "--t2-frac 0.1 --t2-bias-method mico "
             "--dwi-denoiser patch2self"
         ),
         formatter_class=argparse.RawTextHelpFormatter
@@ -573,17 +603,17 @@ if __name__ == "__main__":
     t2.add_argument(
         "--t2-frac",
         type=float,
-        help="BET fractional intensity threshold (default in script: 0.15)"
+        help="BET fractional intensity threshold"
     )
     t2.add_argument(
         "--t2-radius",
         type=int,
-        help="BET head radius in mm (default in script: 45)"
+        help="BET head radius in mm"
     )
     t2.add_argument(
-        "--t2-horizontal-gradient",
+        "--t2-gradient",
         type=float,
-        help="BET horizontal gradient (default in script: 0.0)"
+        help="BET horizontal gradient"
     )
     t2.add_argument(
         "--t2-center",
@@ -591,6 +621,12 @@ if __name__ == "__main__":
         type=int,
         metavar=("X", "Y", "Z"),
         help="BET center in voxel coordinates"
+    )
+    t2.add_argument(
+        "--t2-incidence-script",
+        choices=["par", "detailed"],
+        default="par",
+        help="T2 incidence script for anat process: par (parental Atlas) runs getIncidenceSize_par.py, detailed runs getIncidenceSize.py. Default: par"
     )
 
     # ============================================================
@@ -631,7 +667,7 @@ if __name__ == "__main__":
         help="BET head radius (mm) for DWI"
     )
     dwi.add_argument(
-        "--dwi-horizontal-gradient",
+        "--dwi-gradient",
         type=float,
         help="BET horizontal gradient for DWI"
     )
@@ -661,6 +697,28 @@ if __name__ == "__main__":
         default="bet",
         help="Brain extraction method for fMRI preprocess/process: skip, bet or bet4animal. Default: bet"
     )
+    func.add_argument(
+        "--func-frac",
+        type=float,
+        help="BET fractional intensity threshold for fMRI"
+    )
+    func.add_argument(
+        "--func-radius",
+        type=int,
+        help="BET head radius (mm) for fMRI"
+    )
+    func.add_argument(
+        "--func-gradient",
+        type=float,
+        help="BET horizontal gradient for fMRI"
+    )
+    func.add_argument(
+        "--func-center",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="BET center in voxel coordinates for fMRI"
+    )
 
     # ============================================================
     # T2MAP PREPROCESSING (preProcessing_T2MAP.py)
@@ -679,6 +737,28 @@ if __name__ == "__main__":
         type=str.lower,
         default="mico",
         help='Biasfield correction method for T2map: none or mico. Default: mico'
+    )
+    t2map.add_argument(
+        "--t2map-frac",
+        type=float,
+        help="BET fractional intensity threshold for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-radius",
+        type=int,
+        help="BET head radius (mm) for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-gradient",
+        type=float,
+        help="BET horizontal gradient for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-center",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="BET center in voxel coordinates for T2map"
     )
 
     # ============================================================
