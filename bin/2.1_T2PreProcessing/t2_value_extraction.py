@@ -20,7 +20,8 @@ def getOutfile(atlas_type, img_file, suffix):
 
 def extractT2MapdataMean(img, rois, outfile, txt_file):
     slices = np.unique(np.where(rois > 0)[2])
-    regions = np.delete(np.unique(rois), 0)
+    regions = np.unique(rois)
+    regions = regions[regions > 0]
     
     indices = {}
     if txt_file is not None:
@@ -42,7 +43,8 @@ def extractT2MapdataMean(img, rois, outfile, txt_file):
                 csv_writer.writerow([s, r, acro, "%.2f" % mean_value, "%.2f" % region_size])
 
 def extractT2MapdataPerRegion(img, rois, outfile, txt_file):
-    regions = np.delete(np.unique(rois), 0)
+    regions = np.unique(rois)
+    regions = regions[regions > 0]
     
     indices = {}
     if txt_file is not None:
