@@ -140,3 +140,11 @@ CMakeCache.txt
 CMakeFiles/
 **/CMakeCache.txt
 **/CMakeFiles/
+
+.DS_Store
+*.m~
+.codex/
+
+.DS_Store
+*.m~
+.codex/
