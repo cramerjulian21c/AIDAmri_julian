@@ -144,7 +144,7 @@ def write_html_report(report_entries, out_dir):
     # Compose report file name and title
     report_fname = f"sub-{subject_id}_ses-{session_id}_qc_report.html"
     html_path = os.path.join(out_dir, report_fname)
-    report_title = f"NIfTI QC Report for {subject_id} {session_id}"
+    report_title = f"Bruker to NIfTI QC Report"
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{report_title}</title>\n")
         f.write("""

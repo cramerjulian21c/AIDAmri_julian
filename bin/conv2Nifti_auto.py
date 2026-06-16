@@ -36,6 +36,7 @@ import openpyxl
 import contextlib
 import io
 
+from helper_tools.plot_sourcedata_niftis import process_subject, write_html_report
 
 def create_slice_timings(method_file, scanid, out_file):
     # read in method file to search for parameters
@@ -694,10 +695,9 @@ if __name__ == "__main__":
 
     # plot QC images for nifti files
     print("Plotting QC images for nifti files \33[5m...\33[0m (wait!)")
-    from helper_tools.plot_sourcedata_niftis import process_subject, write_html_report
-    qc_output_dir = os.path.join(output_dir, "qc_images")
-    if not os.path.exists(qc_output_dir):
-        os.mkdir(qc_output_dir)
+
+    qc_output_dir = os.path.join(output_dir, "QC", "Convert2Nifti")
+    os.makedirs(qc_output_dir, exist_ok=True)
     report_entries = []
     for subject_dir in glob.glob(os.path.join(output_dir, "sub-*")):
         subject_id = os.path.basename(subject_dir)
