@@ -11,7 +11,7 @@ Result:
 rsfMRI - a Matlab file which contains two text files: 1) for each region one column with the averaged rsfMRI time series and 2) the atlas labels names.
 DTI - atlas labels file modified to include individually shaped peri-infarct brain regions which replace the original regions
 
-The text file annotation_50CHANGEDanno_label_IDs+2000.txt contains all atlas labels and another text file contains selected cortical peri-infarct atlas labels.
+The SIGMA label description file contains all atlas labels and another text file contains selected cortical peri-infarct atlas labels.
 rsfMRI:
 1. For all time points and for each subject of the two groups a hyperstack with modified selected cortical regions is created.
   - The peri-infarct mask <subject>_T2w_peri_mask_rsfMRI.nii.gz and the atlas labels <subject>_T2w_Anno_rsfMRI.nii.gz are located in the fMRI subfolder.
@@ -20,7 +20,7 @@ rsfMRI:
   - Create a second hyperstack with selected cortical regions from the atlas labels and apply the rsfMRI peri-infarct mask.
   - Create a third hyperstack with all regions but replaced selected cortical regions from the second hyperstack.
 2. For each region of the modified hyperstack an averaged rsfMRI time series is computed and a text file with one column for each region is created.
-  - The atlas labels names are listed in the annoVolume+2000_rsfMRI.nii.txt text file.
+  - The atlas label names are listed in the SIGMA label description text file.
   - The input rsfMRI file <subject>_mcf_f_SFRGR.nii.gz is located in the fMRI/regr subfolder.
   - The resulting text file MasksTCsSplit_GV_all_mod_peri.txt and Matlab file MasksTCsSplit_GV_all_mod_peri.txt.mat are stored in the fMRI/regr subfolder.
   - The modified hyperstack is used with the rsfMRI data and the averaged time series of a region is computed from the voxels of the rsfMRI data which belong to this region.
@@ -239,7 +239,7 @@ def main():
 
     label_names_2000 = pt.read_text(pt.path_label_names_2000)
     labels_2000 = [int(x.split('\t')[0]) for x in label_names_2000]
-    label_names_peri = [label_names_2000[x] for x in list(np.where(np.in1d(labels_2000, labels_2))[0])]
+    label_names_peri = [label_names_2000[x] for x in list(np.where(np.isin(labels_2000, labels_2))[0])]
 
     for index_t, timepoint in enumerate(pt.timepoints):
         for index_g, group in enumerate(pt.groups):

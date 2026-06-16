@@ -40,8 +40,8 @@ Volumes:
   - Brain volume: mask voxel count (>0) * forced voxel volume
     (fallback: annotation foreground >0 if mask missing)
 
-Parental hemisphere IDs:
-  - For parental outputs, filtering uses lookup-table keys (keeps +2000 R hemisphere IDs).
+Parental label IDs:
+  - For parental outputs, filtering uses the SIGMA lookup-table keys directly.
 """
 
 import os
@@ -64,18 +64,45 @@ def find_files(root: str, pattern: str):
 
 
 def build_id_to_name_map(lookup_txt_path: str):
-    """Map atlas ID -> name using tab-separated lookup file."""
+    """Map atlas ID -> name using tab-separated or ITK-SNAP lookup file."""
     id_to_name = {}
     with open(lookup_txt_path, "r") as f:
         for ln in f:
-            parts = ln.rstrip("\n").split("\t")
-            if len(parts) >= 2:
+            line = ln.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            parts = line.split(None, 7)
+            if len(parts) >= 8:
                 try:
                     rid = int(parts[0])
                 except ValueError:
                     continue
-                id_to_name[rid] = parts[1]
+                id_to_name[rid] = parts[7].strip().strip('"')
+                continue
+
+            parts = line.split("\t")
+            if len(parts) >= 2 and parts[0].strip().lstrip("-").isdigit():
+                try:
+                    rid = int(parts[0])
+                except ValueError:
+                    continue
+                id_to_name[rid] = parts[1].strip()
     return id_to_name
+
+
+def load_label_template(labels_mat_path: str, id_to_name: dict):
+    """Load existing label MAT if present, otherwise derive IDs from lookup text."""
+    if labels_mat_path and os.path.exists(labels_mat_path):
+        mat_in = sc.loadmat(labels_mat_path)
+        if "SIGLabelIDs" in mat_in:
+            return mat_in, np.array(mat_in["SIGLabelIDs"][:, 0]).astype(np.int64)
+        if "ABALabelIDs" in mat_in:
+            return mat_in, np.array(mat_in["ABALabelIDs"][:, 0]).astype(np.int64)
+        raise RuntimeError(f"'{labels_mat_path}' does not contain key 'SIGLabelIDs' or 'ABALabelIDs'")
+
+    atlas_label_ids = np.array(sorted(rid for rid in id_to_name.keys() if rid > 0), dtype=np.int64)
+    return {}, atlas_label_ids
 
 
 def strip_nii_ext(filename: str) -> str:
@@ -122,11 +149,7 @@ def compute_one_annotation(
     """
     # Load lookup and labels
     id_to_name = build_id_to_name_map(lookup_txt_path)
-
-    mat_in = sc.loadmat(labels_mat_path)
-    if "ABALabelIDs" not in mat_in:
-        raise RuntimeError(f"'{labels_mat_path}' does not contain key 'ABALabelIDs'")
-    atlas_label_ids = np.array(mat_in["ABALabelIDs"][:, 0]).astype(np.int64)
+    mat_in, atlas_label_ids = load_label_template(labels_mat_path, id_to_name)
 
     # Load annotation
     anno_img = nib.load(anno_path)
@@ -193,10 +216,10 @@ def compute_one_annotation(
     mm3_out = np.array(mm3_list, dtype=np.float64)
     vox_out = np.array(vox_list, dtype=np.float64)
 
-    clean_mat["ABALabelIDs"] = np.stack((ids_out, mm3_out))  # ids + mm^3
-    clean_mat["ABALabelVox"] = np.stack((ids_out, vox_out))  # ids + vox
-    clean_mat["ABANames"] = np.array(names, dtype=object)
-    clean_mat["ABAlabels"] = np.array(names, dtype=object)
+    clean_mat["SIGLabelIDs"] = np.stack((ids_out, mm3_out))  # ids + mm^3
+    clean_mat["SIGLabelVox"] = np.stack((ids_out, vox_out))  # ids + vox
+    clean_mat["SIGNames"] = np.array(names, dtype=object)
+    clean_mat["SIGlabels"] = np.array(names, dtype=object)
     clean_mat["volumeMM"] = float(brain_mm3)
     clean_mat["volumeVox"] = float(brain_vox)
     clean_mat["voxelSizeMM"] = np.array(TRUE_VOX_MM, dtype=np.float64)
@@ -228,16 +251,14 @@ def main():
     out_dir = os.path.join(input_folder, "output_region_size")
     os.makedirs(out_dir, exist_ok=True)
 
-    # Resources relative to current working directory (pipeline layout)
-    base = os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir))
-    labels_mat = os.path.join(base, "lib", "ABALabelsIDchanged.mat")
-    lookup_txt_par = os.path.join(base, "lib", "annoVolume+2000_rsfMRI.nii.txt")
+    # Resources relative to repository layout
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+    labels_mat = os.path.join(base, "lib", "SIGLabelsIDchanged.mat")
+    lookup_txt_par = os.path.join(base, "lib", "sigma", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt")
 
-    lookup_txt_regular = os.path.join(base, "lib", "ARA_annotationR+2000.nii.txt")
-    if not os.path.exists(lookup_txt_regular):
-        lookup_txt_regular = lookup_txt_par
+    lookup_txt_regular = lookup_txt_par
 
-    for p in (labels_mat, lookup_txt_par):
+    for p in (lookup_txt_par,):
         if not os.path.exists(p):
             sys.exit(f"Error: Missing required file: '{p}'")
 
@@ -280,7 +301,7 @@ def main():
             lookup_txt_path=lookup_txt_par,
             out_dir=out_dir,
             is_parental=True,
-            use_lookup_filter=True,   # keep +2000 hemisphere IDs
+            use_lookup_filter=True,
         )
         print(f"[PARENTAL] {os.path.basename(ap)} -> {os.path.basename(out_txt)} ({nreg} regions)")
 

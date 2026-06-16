@@ -34,12 +34,38 @@ from __future__ import print_function
 
 import os
 import sys
+import glob
+import subprocess
 
 import numpy as np
 
 import pv_reader as pvr
 import proc_tools as pt
 import apply_xfm as ax
+
+def run_command(command):
+    try:
+        subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        sys.exit("Error while executing command: %s\nExit code: %s" % (command, e.returncode))
+
+def find_t2w_annotation(in_dir, subject):
+    candidates = [
+        subject + 'BiasBet_AnnoSplit_parental.nii.gz',
+        subject + 'BiasBet_AnnoSplit.nii.gz',
+        subject + 'BiasBet_AnnorsfMRI.nii.gz',
+    ]
+    for candidate in candidates:
+        path = os.path.join(in_dir, candidate)
+        if os.path.isfile(path):
+            return path
+
+    for pattern in ('*_AnnoSplit_parental.nii*', '*_AnnoSplit.nii*', '*AnnorsfMRI.nii*'):
+        matches = sorted(glob.glob(os.path.join(in_dir, subject + pattern)))
+        if matches:
+            return matches[0]
+
+    sys.exit("Error: no T2w atlas labels file found for subject '%s' in '%s'." % (subject, in_dir))
 
 def xfm_T2w_rsfMRI(raw_dir, timepoint_P7, timepoint, group, subject, expno_T2w, expno_rsfMRI, procno_T2w, procno_rsfMRI):
     if (expno_T2w is None) or (expno_rsfMRI is None) or (procno_T2w is None) or (procno_rsfMRI is None):
@@ -59,9 +85,7 @@ def xfm_T2w_rsfMRI(raw_dir, timepoint_P7, timepoint, group, subject, expno_T2w, 
         os.makedirs(out_dir)
 
     # input T2w atlas labels file
-    path_in_anno = os.path.join(in_dir, subject + 'BiasBet_AnnorsfMRI.nii.gz')
-    if not os.path.isfile(path_in_anno):
-        sys.exit("Error: '%s' is not a regular file." % (path_in_anno,))
+    path_in_anno = find_t2w_annotation(in_dir, subject)
 
     # input T2w stroke mask file
     if timepoint == timepoint_P7:
@@ -161,9 +185,7 @@ def xfm_T2w_DTI(raw_dir, timepoint_P7, timepoint, group, subject, expno_T2w, exp
         os.makedirs(out_dir)
 
     # input T2w atlas labels file
-    path_in_anno = os.path.join(in_dir, subject + 'BiasBet_AnnorsfMRI.nii.gz')
-    if not os.path.isfile(path_in_anno):
-        sys.exit("Error: '%s' is not a regular file." % (path_in_anno,))
+    path_in_anno = find_t2w_annotation(in_dir, subject)
 
     # input T2w stroke mask file
     if timepoint == timepoint_P7:
@@ -272,9 +294,7 @@ def xfm_T2w_DTI_reg(timepoint_P7, timepoint, group, subject, expno_T2w, expno_DT
         sys.exit("Error: '%s' is not a regular file." % (path_in_T2w,))
 
     # input T2w atlas labels file
-    path_in_anno = os.path.join(in_dir, subject + 'BiasBet_AnnorsfMRI.nii.gz')
-    if not os.path.isfile(path_in_anno):
-        sys.exit("Error: '%s' is not a regular file." % (path_in_anno,))
+    path_in_anno = find_t2w_annotation(in_dir, subject)
 
     # input T2w stroke mask file
     if timepoint == timepoint_P7:
@@ -311,19 +331,19 @@ def xfm_T2w_DTI_reg(timepoint_P7, timepoint, group, subject, expno_T2w, expno_DT
 
     # resample T2w
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 1' % (path_ref, path_in_T2w, path_T2w_DTI, path_xfm)
-    os.system(command)
+    run_command(command)
 
     # resample atlas labels
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 0' % (path_ref, path_in_anno, path_anno_DTI, path_xfm)
-    os.system(command)
+    run_command(command)
 
     # resample stroke mask
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 0' % (path_ref, path_in_mask, path_mask_DTI, path_xfm)
-    os.system(command)
+    run_command(command)
 
     # resample peri-infarct mask
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 0' % (path_ref, path_in_peri, path_peri_DTI, path_xfm)
-    os.system(command)
+    run_command(command)
 
 def main():
     timepoint_P7 = pt.timepoints[1]

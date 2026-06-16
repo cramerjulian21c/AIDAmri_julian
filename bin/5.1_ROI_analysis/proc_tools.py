@@ -11,24 +11,27 @@ from __future__ import print_function
 import csv
 import os
 import sys
+from collections import OrderedDict
 import numpy as np
 import nibabel as nib
 
 from datetime import datetime
 
 # directories
-lib_in_dir = r'C:\Users\Public\Linux\shared_folder\AIDAmri\lib'
-proc_in_dir = r'C:\Users\Public\Linux\shared_folder\proc_data'
-#proc_out_dir = r'C:\Users\Public\Linux\shared_folder\proc_data'
-proc_out_dir = r'C:\Users\Michael\Projects\Markus\Goeteborg\processed_data'
-raw_in_dir = r'C:\Users\Public\Linux\shared_folder\raw_data'
+script_dir = os.path.dirname(os.path.abspath(__file__))
+repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
+lib_in_dir = os.environ.get('AIDAMRI_LIB_DIR', os.path.join(repo_root, 'lib'))
+proc_in_dir = os.environ.get('AIDAMRI_PROC_IN_DIR', os.path.join(repo_root, 'proc_data'))
+proc_out_dir = os.environ.get('AIDAMRI_PROC_OUT_DIR', proc_in_dir)
+raw_in_dir = os.environ.get('AIDAMRI_RAW_IN_DIR', os.path.join(repo_root, 'raw_data'))
 
-# Enput labels text file with atlas index and seed regions (labels) in each line
+# Input labels text file with atlas index and seed regions (labels) in each line
 # Atlas (1 or 2), Label 1, Label 2, ...
-path_label_names_2000 = os.path.join(lib_in_dir, 'annoVolume+2000_rsfMRI.nii.txt')
-path_labels = os.path.join(lib_in_dir, 'annotation_50CHANGEDanno_label_IDs+2000.txt')
-path_labels_1 = r'C:\Users\Michael\Projects\Markus\Goeteborg\processed_data\cortex_labels_1.txt'
-path_labels_2 = r'C:\Users\Michael\Projects\Markus\Goeteborg\processed_data\cortex_labels_2.txt'
+path_label_names_2000 = os.path.join(lib_in_dir, 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
+path_labels = path_label_names_2000
+path_labels_1 = os.path.join(script_dir, 'cortex_labels_1.txt')
+path_labels_2 = os.path.join(script_dir, 'cortex_labels_2.txt')
+path_brain_template = os.path.join(lib_in_dir, 'sigma', 'SIGMA_InVivo_Brain_Template_Masked.nii.gz')
 
 # Enter all time points of the experiment
 timepoints = ['Baseline', 'P7', 'P14', 'P28', 'P42', 'P56']
@@ -125,29 +128,9 @@ expno_DTI = [[[12, 10, 7, 7, 8, 8, 10, 8, 9, 12],
 # processed images number
 procno = 1
 
-if not os.path.isdir(lib_in_dir):
-    sys.exit("Error: '%s' is not an existing directory." % (lib_in_dir,))
-
-if not os.path.isdir(proc_in_dir):
-    sys.exit("Error: '%s' is not an existing directory." % (proc_in_dir,))
-
-if not os.path.isdir(proc_out_dir):
-    sys.exit("Error: '%s' is not an existing directory." % (proc_out_dir,))
-
-if not os.path.isdir(raw_in_dir):
-    sys.exit("Error: '%s' is not an existing directory." % (raw_in_dir,))
-
-if not os.path.isfile(path_label_names_2000):
-    sys.exit("Error: '%s' is not a regular file." % (path_label_names_2000,))
-
-if not os.path.isfile(path_labels):
-    sys.exit("Error: '%s' is not a regular file." % (path_labels,))
-
-if not os.path.isfile(path_labels_1):
-    sys.exit("Error: '%s' is not a regular file." % (path_labels_1,))
-
-if not os.path.isfile(path_labels_2):
-    sys.exit("Error: '%s' is not a regular file." % (path_labels_2,))
+for path in (path_label_names_2000, path_labels, path_labels_1, path_labels_2, path_brain_template):
+    if not os.path.isfile(path):
+        sys.exit("Error: '%s' is not a regular file." % (path,))
 
 def get_date():
     now = datetime.now()
@@ -167,6 +150,40 @@ def read_csv(filename):
 
     return data
 
+def parse_label_line(line):
+    line = line.strip()
+    if not line or line.startswith('#'):
+        return None
+
+    parts = line.split(None, 7)
+    if len(parts) < 8:
+        return None
+
+    try:
+        label_id = int(parts[0])
+    except ValueError:
+        return None
+
+    label_name = parts[7].strip().strip('"')
+    return label_id, label_name
+
+def load_label_lookup(filename, include_zero=False):
+    labels = OrderedDict()
+    if not os.path.isfile(filename):
+        return labels
+
+    with open(filename, 'r') as fid:
+        for line in fid:
+            parsed = parse_label_line(line)
+            if parsed is None:
+                continue
+            label_id, label_name = parsed
+            if label_id == 0 and not include_zero:
+                continue
+            labels[label_id] = label_name
+
+    return labels
+
 def save_csv(filename, data):
     with open(filename, 'w') as fid:
         writer = csv.writer(fid, delimiter=';', dialect='excel',  lineterminator='\n')
@@ -176,6 +193,10 @@ def save_csv(filename, data):
 
 def read_labels(filename):
     # read labels text file
+    label_lookup = load_label_lookup(filename)
+    if len(label_lookup) > 0:
+        return ([1] * len(label_lookup), [[label_id] for label_id in label_lookup.keys()])
+
     iatlas = []
     labels = []
     for row in read_csv(filename):
@@ -205,16 +226,12 @@ def read_text(filename):
     if not os.path.isfile(filename):
         return None
 
-    # open file to read
-    fid = open(filename, 'r')
+    label_lookup = load_label_lookup(filename)
+    if len(label_lookup) > 0:
+        return ['%d\t%s\n' % (label_id, label_name) for label_id, label_name in label_lookup.items()]
 
-    # read file -> list of lines
-    lines = fid.readlines()
-
-    # close file
-    fid.close()
-
-    return lines
+    with open(filename, 'r') as fid:
+        return fid.readlines()
 
 def save_text(filename, lines):
     with open(filename, 'w') as fid:

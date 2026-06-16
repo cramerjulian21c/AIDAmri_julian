@@ -37,12 +37,19 @@ except NameError:
 
 import os
 import sys
+import subprocess
 
 import numpy as np
 
 import create_seed_rois as csr
 import dilate_mask as dm
 import proc_tools as pt
+
+def run_command(command):
+    try:
+        subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        sys.exit("Error while executing command: %s\nExit code: %s" % (command, e.returncode))
 
 def create_rois_1(path_labels, path_atlas, path_rois=None, mask=None):
     if not os.path.isfile(path_atlas):
@@ -126,7 +133,7 @@ def xfm_inv(timepoint, group, subject):
     if not os.path.isdir(out_dir):
         sys.exit("Error: '%s' is not an existing directory." % (out_dir,))
     
-    brain_template = os.path.join(pt.lib_in_dir, 'NP_template_sc0.nii.gz')
+    brain_template = pt.path_brain_template
     input_volume = os.path.join(in_dir, subject + 'BiasBet.nii.gz')
     output_aff = os.path.join(in_dir, subject + 'BiasBetMatrixAff.txt')
     output_aff_inv = os.path.join(out_dir, subject + 'BiasBetMatrixAff_inv.txt')
@@ -144,12 +151,12 @@ def xfm_inv(timepoint, group, subject):
 
     # inverse affine transformation
     command = 'reg_transform -invAff %s %s' % (output_aff, output_aff_inv)
-    os.system(command)
+    run_command(command)
     print(output_aff_inv)
 
     # inverse transformation
     command = 'reg_transform -ref %s -invNrr %s %s %s' % (input_volume, output_cpp, brain_template, output_cpp_inv)
-    os.system(command)
+    run_command(command)
     print(output_cpp_inv)
 
 def xfm_peri_mask(timepoint_P7, timepoint, group, subject_P7, subject):
@@ -170,7 +177,7 @@ def xfm_peri_mask(timepoint_P7, timepoint, group, subject_P7, subject):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    brain_template = os.path.join(pt.lib_in_dir, 'NP_template_sc0.nii.gz')
+    brain_template = pt.path_brain_template
     input_volume = os.path.join(in_dir, subject + 'BiasBet.nii.gz')
     output_cpp = os.path.join(in_dir, subject + 'BiasBetMatrixBspline.nii')
     output_cpp_inv = os.path.join(out_dir_P7, subject_P7 + 'BiasBetMatrixBspline_inv.nii.gz')
@@ -197,15 +204,15 @@ def xfm_peri_mask(timepoint_P7, timepoint, group, subject_P7, subject):
 
     # compose transformations
     command = 'reg_transform -ref %s -ref2 %s -comp %s %s %s' % (input_volume, brain_template, output_cpp, output_cpp_inv, output_cpp_comp)
-    os.system(command)
+    run_command(command)
 
     # resample stroke mask
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 0' % (input_volume, mask_P7, mask, output_cpp_comp)
-    os.system(command)
+    run_command(command)
 
     # resample peri-infarct mask
     command = 'reg_resample -ref %s -flo %s -res %s -trans %s -inter 0' % (input_volume, peri_P7, peri, output_cpp_comp)
-    os.system(command)
+    run_command(command)
 
 def main():
     timepoint_P7 = pt.timepoints[1]

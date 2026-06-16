@@ -32,10 +32,13 @@ def mean_ts(path_data, path_mask, path_out, label_names):
     mask, _ = pt.read_data(path_mask)
     file_mask = os.path.basename(path_mask)
     if len(mask.shape) != 4:
-        sys.exit("Error: %s is not 4D shape $s." % (file_mask, str(mask.shape)))
+        sys.exit("Error: %s is not 4D shape %s." % (file_mask, str(mask.shape)))
 
     if data.shape[:3] != mask.shape[:3]:
         sys.exit("Error: %s %s and %s %s are not the same shape." % (file_data, str(data.shape[:3]), file_mask, str(mask.shape[:3])))
+
+    if label_names is not None and len(label_names) != mask.shape[3]:
+        sys.exit("Error: %s contains %d ROI volumes, but %d label names were provided." % (file_mask, mask.shape[3], len(label_names)))
 
     #path_out_mat = path_out + '.mat'
     path_out_mat = os.path.join(os.path.dirname(path_out), os.path.basename(path_out) + '.mat')
@@ -81,6 +84,8 @@ if __name__ == '__main__':
     if path_out.endswith('.nii.gz'):
         path_out = path_out[:-7]
     elif path_out.endswith('.nii'):
+        path_out = path_out[:-4]
+    elif path_out.endswith('.txt'):
         path_out = path_out[:-4]
     path_out = path_out + '.txt'
 
