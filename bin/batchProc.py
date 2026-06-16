@@ -479,6 +479,46 @@ def find(pattern, path):
                 result.append(os.path.join(root, name))
     return result
 
+
+def create_qc_reports(project_path, steps):
+    requested_steps = set(steps)
+
+    try:
+        from helper_tools.batch_qc_reports import (
+            build_bet_qc_report,
+            build_registration_qc_report,
+        )
+    except Exception as exc:
+        logging.warning("Could not import batch QC report tools: %s", exc)
+        print(f"QC report generation skipped: {exc}")
+        return
+
+    if "preprocess" in requested_steps:
+        try:
+            html_path, count = build_bet_qc_report(project_path, n_slices=10)
+            if html_path:
+                print(f"BET QC report written to {html_path} ({count} image(s))")
+                logging.info("BET QC report written to %s (%s images)", html_path, count)
+            else:
+                print("BET QC report skipped: no BET files found.")
+                logging.info("BET QC report skipped: no BET files found.")
+        except Exception as exc:
+            logging.warning("BET QC report generation failed: %s", exc)
+            print(f"BET QC report generation failed: {exc}")
+
+    if "registration" in requested_steps:
+        try:
+            html_path, count = build_registration_qc_report(project_path, n_slices=10)
+            if html_path:
+                print(f"Registration QC report written to {html_path} ({count} image(s))")
+                logging.info("Registration QC report written to %s (%s images)", html_path, count)
+            else:
+                print("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+                logging.info("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+        except Exception as exc:
+            logging.warning("Registration QC report generation failed: %s", exc)
+            print(f"Registration QC report generation failed: {exc}")
+
 if __name__ == "__main__":
     import argparse
 
@@ -940,7 +980,6 @@ if __name__ == "__main__":
                         # strings or unexpected types
                         print(f"Error: {err}")
 
-            
-                
+    create_qc_reports(pathToData, steps)
 
  
