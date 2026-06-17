@@ -479,6 +479,61 @@ def find(pattern, path):
                 result.append(os.path.join(root, name))
     return result
 
+
+def create_qc_reports(project_path, steps):
+    requested_steps = set(steps)
+
+    try:
+        from helper_tools.batch_qc_reports import (
+            build_bet_qc_report,
+            build_registration_qc_report,
+        )
+    except Exception as exc:
+        logging.warning("Could not import batch QC report tools: %s", exc)
+        print(f"QC report generation skipped: {exc}")
+        return
+
+    if "preprocess" in requested_steps:
+        try:
+            html_path, count = build_bet_qc_report(project_path, n_slices=10)
+            if html_path:
+                print(f"BET QC report written to {html_path} ({count} image(s))")
+                logging.info("BET QC report written to %s (%s images)", html_path, count)
+            else:
+                print("BET QC report skipped: no BET files found.")
+                logging.info("BET QC report skipped: no BET files found.")
+        except Exception as exc:
+            logging.warning("BET QC report generation failed: %s", exc)
+            print(f"BET QC report generation failed: {exc}")
+
+    if "registration" in requested_steps:
+        try:
+            html_path, count = build_registration_qc_report(project_path, n_slices=7)
+            if html_path:
+                print(f"Registration QC report written to {html_path} ({count} image(s))")
+                logging.info("Registration QC report written to %s (%s images)", html_path, count)
+            else:
+                print("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+                logging.info("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+        except Exception as exc:
+            logging.warning("Registration QC report generation failed: %s", exc)
+            print(f"Registration QC report generation failed: {exc}")
+
+
+def format_step_label(step):
+    labels = {
+        "preprocess": "Preprocessing",
+        "registration": "Registration",
+        "process": "Processing",
+    }
+    return labels.get(step, step.capitalize())
+
+
+TQDM_BAR_FORMAT = (
+    "{desc}: {percentage:3.0f}%|{bar}| "
+    "{n_fmt}/{total_fmt} done | elapsed {elapsed} | remaining {remaining}"
+)
+
 if __name__ == "__main__":
     import argparse
 
@@ -882,11 +937,18 @@ if __name__ == "__main__":
             print()
             print(f"Entered {key} data: \n{value}")
             print()
-            print(f"\n{key} processing \33[5m...\33[0m (wait!)") 
+            print(f"\nStarting {key} pipeline \33[5m...\33[0m")
             print()
             for step in steps: 
                 error_list_step = []
-                progress_bar = tqdm(total=len(value), desc=f"{step} {key} data")
+                step_label = format_step_label(step)
+                step_display = f"{step_label} {key} data"
+                progress_bar = tqdm(
+                    total=len(value),
+                    desc=step_display,
+                    unit="dataset",
+                    bar_format=TQDM_BAR_FORMAT,
+                )
                 with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
                     futures = [executor.submit(executeScripts, path, key, step, cfg, stc) for path in value]
 
@@ -912,20 +974,20 @@ if __name__ == "__main__":
 
                     # keep a per-step and per-datatype summary
                     if not flat_errors_step:
-                        print(f"{key} {step}  \033[0;30;42m COMPLETED \33[0m")
+                        print(f"{step_display}  \033[0;30;42m Complete \33[0m")
                     else:
-                        print(f"{key} {step}  \033[0;30;41m INCOMPLETE \33[0m")
+                        print(f"{step_display}  \033[0;30;41m Incomplete \33[0m")
                         error_list_all.extend(flat_errors_step)
 
                     logging.info(f"{key} {step} processing completed")
 
             logging.error(f"Following errors were occurring: {error_list_all}")
-            logging.info(f"{key} processing completed")
+            logging.info(f"{key} pipeline completed")
 
             if not error_list_all:
-                print(f"\n{key} processing \033[0;30;42m COMPLETED \33[0m")
+                print(f"\n{key} pipeline \033[0;30;42m COMPLETED \33[0m")
             else:
-                print(f"\n{key} processing \033[0;30;41m INCOMPLETE \33[0m")
+                print(f"\n{key} pipeline \033[0;30;41m INCOMPLETE \33[0m")
                 print()
                 for err in error_list_all:
                     if isinstance(err, tuple) and len(err) == 4:
@@ -936,7 +998,6 @@ if __name__ == "__main__":
                         # strings or unexpected types
                         print(f"Error: {err}")
 
-            
-                
+    create_qc_reports(pathToData, steps)
 
  
