@@ -267,14 +267,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '2.3_fMRIPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*Smooth*Bet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Bet.nii.gz in {str(currentPath_wData)}';
                     logging.error(message)
                     errorList.append(message)
                 os.chdir(cwd)
