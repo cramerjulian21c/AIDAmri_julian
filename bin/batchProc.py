@@ -667,8 +667,6 @@ if __name__ == "__main__":
     )
     t2.add_argument(
         "--t2-gradient",
-        "--t2-horizontal-gradient",
-        dest="t2_gradient",
         type=float,
         help="BET horizontal gradient"
     )
@@ -681,9 +679,9 @@ if __name__ == "__main__":
     )
     t2.add_argument(
         "--t2-incidence-script",
-        choices=["auto", "par", "detailed"],
-        default="auto",
-        help="T2 incidence script for anat process: auto tries par then detailed, par runs getIncidenceSize_par.py, detailed runs getIncidenceSize.py. Default: auto"
+        choices=["par", "detailed"],
+        default="par",
+        help="T2 incidence script for anat process: par (parental Atlas) runs getIncidenceSize_par.py, detailed runs getIncidenceSize.py. Default: par"
     )
 
     # ============================================================
@@ -725,8 +723,6 @@ if __name__ == "__main__":
     )
     dwi.add_argument(
         "--dwi-gradient",
-        "--dwi-horizontal-gradient",
-        dest="dwi_gradient",
         type=float,
         help="BET horizontal gradient for DWI"
     )
