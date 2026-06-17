@@ -329,7 +329,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
                 currentFile = sorted(
-                    currentPath_wData.glob("*Smooth*Bet.nii.gz"),
+                    currentPath_wData.glob("*Bet.nii.gz"),
                     key=lambda path: path.stat().st_mtime,
                     reverse=True,
                 )
@@ -339,7 +339,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -398,14 +398,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '2.2_DTIPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*Smooth*Bet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_DTI.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {currentPath_wData}';
+                    message = f'Could not find *Bet.nii.gz in {currentPath_wData}';
                     logging.error(message)
                     errorList.append(message)
                 os.chdir(cwd)
