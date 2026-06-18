@@ -26,7 +26,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
 
     # Inverse registration
@@ -41,7 +41,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
 
     # if region such as stroke_mask is defined
@@ -54,7 +54,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
             result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
             print(f"Output of {command}:\n{result.stdout}")
         except Exception as e:
-            print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+            print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
             raise
 
 
@@ -78,7 +78,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
 
     # resmaple Allen Brain Reference Template
@@ -90,7 +90,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
         
      # resample parental annotations
@@ -102,7 +102,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise    
 
     # resample parental split annotations
@@ -114,7 +114,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
 
     # resample annotations
@@ -126,7 +126,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise
         
     # resample parental split annotations
@@ -138,7 +138,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,al
         result = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
         print(f"Output of {command}:\n{result.stdout}")
     except Exception as e:
-        print(f'Error while executing the command: {command_args}\Errorcode: {str(e)}')
+        print(f'Error while executing the command: {command_args}\nErrorcode: {str(e)}')
         raise    
     
 

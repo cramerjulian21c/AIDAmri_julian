@@ -187,8 +187,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -f {cfg["t2_frac"]}'
                     if cfg.get("t2_radius") is not None:
                         command += f' -r {cfg["t2_radius"]}'
-                    if cfg.get("t2_horizontal_gradient") is not None:
-                        command += f' -g {cfg["t2_horizontal_gradient"]}'
+                    if cfg.get("t2_gradient") is not None:
+                        command += f' -g {cfg["t2_gradient"]}'
                     if cfg.get("t2_center") is not None:
                         cx, cy, cz = cfg["t2_center"]
                         command += f' -c {cx} {cy} {cz}'
@@ -226,22 +226,17 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     #print(message, flush=True)
                     return 0
                 os.chdir(os.path.join(cwd, '3.1_T2Processing'))
-                command = f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}'
-                result = run_subprocess(command, dataFormat, step)
-                if isinstance(result, tuple) and len(result) == 4:
-                    os.chdir(os.path.join(cwd, '3.1_T2Processing'))
+                if cfg.get("t2_incidence_script") == "detailed":
+                    command = f'python getIncidenceSize.py -i {_quote(currentPath_wData)}'
+                    result = run_subprocess(command, dataFormat, step, anat_process=True)
+                else:
+                    command = f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}'
+                    result = run_subprocess(command, dataFormat, step)
 
-                    r_par = run_subprocess(f'python getIncidenceSize_par.py -i {_quote(currentPath_wData)}',
-                                           dataFormat, step)
+                if result != 0:
+                    errorList.append(result)
 
-                    if r_par != 0:
-                        errorList.append(r_par)
-                        r_ser = run_subprocess(f'python getIncidenceSize.py -i {_quote(currentPath_wData)}',
-                                               dataFormat, step, anat_process=True)
-                        if r_ser != 0:
-                            errorList.append(r_ser)
-
-                    os.chdir(cwd)
+                os.chdir(cwd)
 
 
         elif dataFormat == 'func':
@@ -253,6 +248,15 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
                     command += f' --bet {cfg["func_bet"]}'
+                    if cfg.get("func_frac") is not None:
+                        command += f' -f {cfg["func_frac"]}'
+                    if cfg.get("func_radius") is not None:
+                        command += f' -r {cfg["func_radius"]}'
+                    if cfg.get("func_gradient") is not None:
+                        command += f' -g {cfg["func_gradient"]}'
+                    if cfg.get("func_center") is not None:
+                        cx, cy, cz = cfg["func_center"]
+                        command += f' -c {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -263,14 +267,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '2.3_fMRIPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*Smooth*Bet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Bet.nii.gz in {str(currentPath_wData)}';
                     logging.error(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -279,10 +283,23 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
                     command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc} --bet {cfg["func_bet"]}'
+                    if cfg.get("func_frac") is not None:
+                        command += f' --bet-frac {cfg["func_frac"]}'
+                    if cfg.get("func_radius") is not None:
+                        command += f' --bet-radius {cfg["func_radius"]}'
+                    if cfg.get("func_gradient") is not None:
+                        command += f' --bet-gradient {cfg["func_gradient"]}'
+                    if cfg.get("func_center") is not None:
+                        cx, cy, cz = cfg["func_center"]
+                        command += f' -ctr {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                     os.chdir(cwd)
+                else:
+                    message = f'Could not find *EPI.nii.gz in {str(currentPath_wData)}';
+                    logging.error(message)
+                    errorList.append(message)
         elif dataFormat == 't2map':
             if step == "preprocess":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
@@ -292,6 +309,15 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("t2map_bias_method"):
                         command += f' -b {cfg["t2map_bias_method"]}'
                     command += f' --bet {cfg["t2map_bet"]}'
+                    if cfg.get("t2map_frac") is not None:
+                        command += f' -f {cfg["t2map_frac"]}'
+                    if cfg.get("t2map_radius") is not None:
+                        command += f' -r {cfg["t2map_radius"]}'
+                    if cfg.get("t2map_gradient") is not None:
+                        command += f' -g {cfg["t2map_gradient"]}'
+                    if cfg.get("t2map_center") is not None:
+                        cx, cy, cz = cfg["t2map_center"]
+                        command += f' -c {cx} {cy} {cz}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -303,7 +329,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '4.1_T2mapPreProcessing'))
                 currentFile = sorted(
-                    currentPath_wData.glob("*Smooth*Bet.nii.gz"),
+                    currentPath_wData.glob("*Bet.nii.gz"),
                     key=lambda path: path.stat().st_mtime,
                     reverse=True,
                 )
@@ -313,7 +339,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Bet.nii.gz in {str(currentPath_wData)}';
                     print(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -342,8 +368,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -f {cfg["dwi_frac"]}'
                     if cfg.get("dwi_radius") is not None:
                         command += f' -r {cfg["dwi_radius"]}'
-                    if cfg.get("dwi_horizontal_gradient") is not None:
-                        command += f' -g {cfg["dwi_horizontal_gradient"]}'
+                    if cfg.get("dwi_gradient") is not None:
+                        command += f' -g {cfg["dwi_gradient"]}'
 
                     # Bias field
                     # dwi_bias_method with choices ["mico",“ants”], default=None
@@ -372,14 +398,14 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 os.chdir(cwd)
             elif step == "registration":
                 os.chdir(os.path.join(cwd, '2.2_DTIPreProcessing'))
-                currentFile = sorted(currentPath_wData.glob("*Smooth*Bet.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_DTI.py -i {_quote(currentFile[0])}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                 else:
-                    message = f'Could not find *Smooth*Bet.nii.gz in {currentPath_wData}';
+                    message = f'Could not find *Bet.nii.gz in {currentPath_wData}';
                     logging.error(message)
                     errorList.append(message)
                 os.chdir(cwd)
@@ -423,6 +449,10 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
+                else:
+                    message = f'Could not find DWI input for DSI processing in {str(currentPath_wData)}';
+                    logging.error(message)
+                    errorList.append(message)
                 os.chdir(cwd)
         else:
             message = 'The data folders'' names do not match anat, dwi, func or t2map';
@@ -448,6 +478,61 @@ def find(pattern, path):
             if fnmatch.fnmatch(name, pattern):
                 result.append(os.path.join(root, name))
     return result
+
+
+def create_qc_reports(project_path, steps):
+    requested_steps = set(steps)
+
+    try:
+        from helper_tools.batch_qc_reports import (
+            build_bet_qc_report,
+            build_registration_qc_report,
+        )
+    except Exception as exc:
+        logging.warning("Could not import batch QC report tools: %s", exc)
+        print(f"QC report generation skipped: {exc}")
+        return
+
+    if "preprocess" in requested_steps:
+        try:
+            html_path, count = build_bet_qc_report(project_path, n_slices=10)
+            if html_path:
+                print(f"BET QC report written to {html_path} ({count} image(s))")
+                logging.info("BET QC report written to %s (%s images)", html_path, count)
+            else:
+                print("BET QC report skipped: no BET files found.")
+                logging.info("BET QC report skipped: no BET files found.")
+        except Exception as exc:
+            logging.warning("BET QC report generation failed: %s", exc)
+            print(f"BET QC report generation failed: {exc}")
+
+    if "registration" in requested_steps:
+        try:
+            html_path, count = build_registration_qc_report(project_path, n_slices=7)
+            if html_path:
+                print(f"Registration QC report written to {html_path} ({count} image(s))")
+                logging.info("Registration QC report written to %s (%s images)", html_path, count)
+            else:
+                print("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+                logging.info("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+        except Exception as exc:
+            logging.warning("Registration QC report generation failed: %s", exc)
+            print(f"Registration QC report generation failed: {exc}")
+
+
+def format_step_label(step):
+    labels = {
+        "preprocess": "Preprocessing",
+        "registration": "Registration",
+        "process": "Processing",
+    }
+    return labels.get(step, step.capitalize())
+
+
+TQDM_BAR_FORMAT = (
+    "{desc}: {percentage:3.0f}%|{bar}| "
+    "{n_fmt}/{total_fmt} done | elapsed {elapsed} | remaining {remaining}"
+)
 
 if __name__ == "__main__":
     import argparse
@@ -491,7 +576,7 @@ if __name__ == "__main__":
             "Runs preprocessing, registration and processing steps for T2, DWI, fMRI and T2map.\n\n"
             "Example:\n"
             "python batchProc.py -i /path/to/proc_data -t anat dwi "
-            "--t2-frac 0.15 --t2-bias-method mico "
+            "--t2-frac 0.1 --t2-bias-method mico "
             "--dwi-denoiser patch2self"
         ),
         formatter_class=argparse.RawTextHelpFormatter
@@ -573,17 +658,17 @@ if __name__ == "__main__":
     t2.add_argument(
         "--t2-frac",
         type=float,
-        help="BET fractional intensity threshold (default in script: 0.15)"
+        help="BET fractional intensity threshold"
     )
     t2.add_argument(
         "--t2-radius",
         type=int,
-        help="BET head radius in mm (default in script: 45)"
+        help="BET head radius in mm"
     )
     t2.add_argument(
-        "--t2-horizontal-gradient",
+        "--t2-gradient",
         type=float,
-        help="BET horizontal gradient (default in script: 0.0)"
+        help="BET horizontal gradient"
     )
     t2.add_argument(
         "--t2-center",
@@ -591,6 +676,12 @@ if __name__ == "__main__":
         type=int,
         metavar=("X", "Y", "Z"),
         help="BET center in voxel coordinates"
+    )
+    t2.add_argument(
+        "--t2-incidence-script",
+        choices=["par", "detailed"],
+        default="par",
+        help="T2 incidence script for anat process: par (parental Atlas) runs getIncidenceSize_par.py, detailed runs getIncidenceSize.py. Default: par"
     )
 
     # ============================================================
@@ -631,7 +722,7 @@ if __name__ == "__main__":
         help="BET head radius (mm) for DWI"
     )
     dwi.add_argument(
-        "--dwi-horizontal-gradient",
+        "--dwi-gradient",
         type=float,
         help="BET horizontal gradient for DWI"
     )
@@ -661,6 +752,28 @@ if __name__ == "__main__":
         default="bet",
         help="Brain extraction method for fMRI preprocess/process: skip, bet or bet4animal. Default: bet"
     )
+    func.add_argument(
+        "--func-frac",
+        type=float,
+        help="BET fractional intensity threshold for fMRI"
+    )
+    func.add_argument(
+        "--func-radius",
+        type=int,
+        help="BET head radius (mm) for fMRI"
+    )
+    func.add_argument(
+        "--func-gradient",
+        type=float,
+        help="BET horizontal gradient for fMRI"
+    )
+    func.add_argument(
+        "--func-center",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="BET center in voxel coordinates for fMRI"
+    )
 
     # ============================================================
     # T2MAP PREPROCESSING (preProcessing_T2MAP.py)
@@ -679,6 +792,28 @@ if __name__ == "__main__":
         type=str.lower,
         default="mico",
         help='Biasfield correction method for T2map: none or mico. Default: mico'
+    )
+    t2map.add_argument(
+        "--t2map-frac",
+        type=float,
+        help="BET fractional intensity threshold for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-radius",
+        type=int,
+        help="BET head radius (mm) for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-gradient",
+        type=float,
+        help="BET horizontal gradient for T2map"
+    )
+    t2map.add_argument(
+        "--t2map-center",
+        nargs=3,
+        type=float,
+        metavar=("X", "Y", "Z"),
+        help="BET center in voxel coordinates for T2map"
     )
 
     # ============================================================
@@ -802,11 +937,18 @@ if __name__ == "__main__":
             print()
             print(f"Entered {key} data: \n{value}")
             print()
-            print(f"\n{key} processing \33[5m...\33[0m (wait!)") 
+            print(f"\nStarting {key} pipeline \33[5m...\33[0m")
             print()
             for step in steps: 
                 error_list_step = []
-                progress_bar = tqdm(total=len(value), desc=f"{step} {key} data")
+                step_label = format_step_label(step)
+                step_display = f"{step_label} {key} data"
+                progress_bar = tqdm(
+                    total=len(value),
+                    desc=step_display,
+                    unit="dataset",
+                    bar_format=TQDM_BAR_FORMAT,
+                )
                 with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
                     futures = [executor.submit(executeScripts, path, key, step, cfg, stc) for path in value]
 
@@ -832,20 +974,20 @@ if __name__ == "__main__":
 
                     # keep a per-step and per-datatype summary
                     if not flat_errors_step:
-                        print(f"{key} {step}  \033[0;30;42m COMPLETED \33[0m")
+                        print(f"{step_display}  \033[0;30;42m Complete \33[0m")
                     else:
-                        print(f"{key} {step}  \033[0;30;41m INCOMPLETE \33[0m")
+                        print(f"{step_display}  \033[0;30;41m Incomplete \33[0m")
                         error_list_all.extend(flat_errors_step)
 
                     logging.info(f"{key} {step} processing completed")
 
             logging.error(f"Following errors were occurring: {error_list_all}")
-            logging.info(f"{key} processing completed")
+            logging.info(f"{key} pipeline completed")
 
             if not error_list_all:
-                print(f"\n{key} processing \033[0;30;42m COMPLETED \33[0m")
+                print(f"\n{key} pipeline \033[0;30;42m COMPLETED \33[0m")
             else:
-                print(f"\n{key} processing \033[0;30;41m INCOMPLETE \33[0m")
+                print(f"\n{key} pipeline \033[0;30;41m INCOMPLETE \33[0m")
                 print()
                 for err in error_list_all:
                     if isinstance(err, tuple) and len(err) == 4:
@@ -856,7 +998,6 @@ if __name__ == "__main__":
                         # strings or unexpected types
                         print(f"Error: {err}")
 
-            
-                
+    create_qc_reports(pathToData, steps)
 
  

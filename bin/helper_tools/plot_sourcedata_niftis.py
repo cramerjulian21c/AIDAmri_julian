@@ -2,10 +2,32 @@ import os
 import argparse
 import nibabel as nib
 import numpy as np
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
+os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
+
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+def _display_geometry(img_slice, orientation, zooms):
+    if orientation == 'Axial':
+        row_spacing, col_spacing = zooms[1], zooms[0]
+    elif orientation == 'Sagittal':
+        row_spacing, col_spacing = zooms[2], zooms[1]
+    else:
+        row_spacing, col_spacing = zooms[2], zooms[0]
+
+    rows, cols = img_slice.shape
+    extent = (0, cols * col_spacing, 0, rows * row_spacing)
+    return extent
 
 def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     img = nib.load(nifti_path)
+    zooms = img.header.get_zooms()[:3]
     # Attempt to load data, if end of file error occurs, skip this file and create a placeholder image
     try:
         data = img.get_fdata()
@@ -62,7 +84,15 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
                 img_slice = data[:, sl, :]
             # Ensure img_slice is 2D
             img_slice = np.squeeze(img_slice)
-            axes[i, j].imshow(np.rot90(img_slice), cmap='gray')
+            img_slice = np.rot90(img_slice)
+            extent = _display_geometry(img_slice, ori, zooms)
+            axes[i, j].imshow(
+                img_slice,
+                cmap='gray',
+                extent=extent,
+                origin='lower',
+                aspect='equal'
+            )
             axes[i, j].set_title(f"{ori} slice {sl}", fontsize=12)
             axes[i, j].axis('off')
             # Add orientation labels from axis_codes
@@ -97,12 +127,14 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                     nifti_path = os.path.join(modality_dir, fname)
                     img = nib.load(nifti_path)
                     shape = img.shape
+                    voxel_size = img.header.get_zooms()[:3]
                     n_vols = shape[3] if (modality in ['dwi', 'func'] and len(shape) > 3) else 1
                     qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                     report_entries.append({
                         'filename': fname,
                         'modality': modality,
                         'dimensions': shape,
+                        'voxel_size': voxel_size,
                         'n_volumes': n_vols,
                         'qc_img_path': os.path.basename(qc_img_path)
                     })
@@ -117,12 +149,14 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                                     nifti_path = os.path.join(subfolder_path, fname)
                                     img = nib.load(nifti_path)
                                     shape = img.shape
+                                    voxel_size = img.header.get_zooms()[:3]
                                     n_vols = shape[3] if (modality in ['dwi'] and len(shape) > 3) else 1
                                     qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                                     report_entries.append({
                                     'filename': fname,
                                     'modality': modality,
                                     'dimensions': shape,
+                                    'voxel_size': voxel_size,
                                     'n_volumes': n_vols,
                                     'qc_img_path': os.path.basename(qc_img_path)
                                 })
@@ -144,7 +178,7 @@ def write_html_report(report_entries, out_dir):
     # Compose report file name and title
     report_fname = f"sub-{subject_id}_ses-{session_id}_qc_report.html"
     html_path = os.path.join(out_dir, report_fname)
-    report_title = f"NIfTI QC Report for {subject_id} {session_id}"
+    report_title = f"Bruker to NIfTI QC Report"
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{report_title}</title>\n")
         f.write("""
@@ -167,6 +201,7 @@ def write_html_report(report_entries, out_dir):
                 f"<div class='qc-info'><b>File Name:</b> {entry['filename']} &nbsp; "
                 f"<b>Modality:</b> {entry['modality']} &nbsp; "
                 f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
+                f"<b>Voxel Size:</b> {tuple(round(float(z), 4) for z in entry.get('voxel_size', ()))} &nbsp; "
                 f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
             )
             f.write(f"<img class='qc-img' src='{entry['qc_img_path']}' alt='{entry['filename']}'>\n")
