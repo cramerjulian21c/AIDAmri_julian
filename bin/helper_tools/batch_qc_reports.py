@@ -134,7 +134,7 @@ def _plot_bet_image(bet_path, out_dir, project_dir, n_slices):
             ax.set_title(f"{orientation} {index}", fontsize=9)
             ax.axis("off")
 
-    fig.suptitle(f"BET QC: {Path(bet_path).name}", fontsize=14)
+    fig.suptitle(f"BET Report: {Path(bet_path).name}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     png_path = Path(out_dir) / _safe_png_name(bet_path, project_dir, "bet_qc")
     fig.savefig(png_path, dpi=120)
@@ -186,7 +186,7 @@ def _plot_registration_overlay(bet_path, anno_path, out_dir, project_dir, n_slic
             ax.set_title(f"{orientation} {index}", fontsize=9)
             ax.axis("off")
 
-    fig.suptitle(f"Registration QC: {Path(bet_path).name} + {Path(anno_path).name}", fontsize=14)
+    fig.suptitle(f"Registration Report: {Path(bet_path).name} + {Path(anno_path).name}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     png_path = Path(out_dir) / _safe_png_name(anno_path, project_dir, "registration_qc")
     fig.savefig(png_path, dpi=120)
@@ -268,7 +268,7 @@ def _write_report(entries, out_dir, title, report_name):
 
 def build_bet_qc_report(project_dir, n_slices=10):
     project_dir = Path(project_dir)
-    out_dir = project_dir / "QC" / "BET"
+    out_dir = project_dir / "Report" / "BET"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     entries = []
@@ -297,17 +297,17 @@ def build_bet_qc_report(project_dir, n_slices=10):
                 }
             )
         except Exception as exc:
-            logging.warning("Could not create BET QC for %s: %s", bet_path, exc)
+            logging.warning("Could not create BET Report for %s: %s", bet_path, exc)
 
     if not entries:
         return None, 0
-    html_path = _write_report(entries, out_dir, "BET QC Report", "bet_qc_report.html")
+    html_path = _write_report(entries, out_dir, "BET Report", "bet_qc_report.html")
     return html_path, len(entries)
 
 
 def build_registration_qc_report(project_dir, n_slices=10):
     project_dir = Path(project_dir)
-    out_dir = project_dir / "QC" / "Registration"
+    out_dir = project_dir / "Report" / "Registration"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     entries = []
@@ -317,7 +317,7 @@ def build_registration_qc_report(project_dir, n_slices=10):
         bet_name = anno_path.name[: -len(suffix)] + ".nii.gz"
         bet_path = anno_path.with_name(bet_name)
         if not bet_path.exists():
-            logging.warning("Skipping registration QC without matching BET file: %s", anno_path)
+            logging.warning("Skipping registration Report without matching BET file: %s", anno_path)
             continue
         try:
             png_path, bet_shape, anno_shape, zooms = _plot_registration_overlay(
@@ -344,14 +344,14 @@ def build_registration_qc_report(project_dir, n_slices=10):
                 }
             )
         except Exception as exc:
-            logging.warning("Could not create registration QC for %s: %s", anno_path, exc)
+            logging.warning("Could not create registration Report for %s: %s", anno_path, exc)
 
     if not entries:
         return None, 0
     html_path = _write_report(
         entries,
         out_dir,
-        "Registration QC Report: BET + AnnoSplit_parental",
+        "Registration Report: BET + AnnoSplit_parental",
         "registration_qc_report.html",
     )
     return html_path, len(entries)

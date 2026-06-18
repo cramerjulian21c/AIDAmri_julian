@@ -74,7 +74,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
                                 va='top', ha='center', fontsize=12, color='lime')
             axes[i, j].annotate(bottom, xy=(0.5, 0), xycoords='axes fraction',
                                 va='bottom', ha='center', fontsize=12, color='lime')
-    plt.suptitle(f"QC Slices: {fname}", fontsize=16)
+    plt.suptitle(f"Slices: {fname}", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, fname.replace('.nii', '').replace('.gz', '') + '_qc.png')
@@ -144,7 +144,7 @@ def write_html_report(report_entries, out_dir):
     # Compose report file name and title
     report_fname = f"sub-{subject_id}_ses-{session_id}_qc_report.html"
     html_path = os.path.join(out_dir, report_fname)
-    report_title = f"NIfTI QC Report for {subject_id} {session_id}"
+    report_title = f"NIfTI Report for {subject_id} {session_id}"
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{report_title}</title>\n")
         f.write("""
@@ -232,9 +232,9 @@ def write_html_report(report_entries, out_dir):
     print(f"HTML report written to {html_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Create QC plots and HTML report for NIfTI files of a subject.")
+    parser = argparse.ArgumentParser(description="Create plots and HTML report for NIfTI files of a subject.")
     parser.add_argument("subject_dir", help="Path to sub-<subject_id>/ses-<session_id>/ directory")
-    parser.add_argument("out_dir", help="Directory to save QC plots and HTML report")
+    parser.add_argument("out_dir", help="Directory to save plots and HTML report")
     parser.add_argument("--n_slices", type=int, default=10, help="Number of slices per orientation")
     args = parser.parse_args()
     report_entries = process_subject(args.subject_dir, args.out_dir, args.n_slices)
