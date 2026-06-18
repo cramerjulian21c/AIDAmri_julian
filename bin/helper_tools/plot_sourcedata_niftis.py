@@ -16,7 +16,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
         plt.imshow(data[:, :, 0], cmap='gray')  # Show a single slice
         plt.title(f"Placeholder for {os.path.basename(nifti_path)}")
         plt.axis('off')
-        out_path = os.path.join(out_dir, os.path.basename(nifti_path).replace('.nii', '').replace('.gz', '') + '_qc.png')
+        out_path = os.path.join(out_dir, os.path.basename(nifti_path).replace('.nii', '').replace('.gz', '') + '_report.png')
         plt.savefig(out_path)
         plt.close()
         return out_path
@@ -77,7 +77,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     plt.suptitle(f"Slices: {fname}", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, fname.replace('.nii', '').replace('.gz', '') + '_qc.png')
+    out_path = os.path.join(out_dir, fname.replace('.nii', '').replace('.gz', '') + '_report.png')
     plt.savefig(out_path)
     plt.close(fig)
     return out_path
@@ -98,13 +98,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                     img = nib.load(nifti_path)
                     shape = img.shape
                     n_vols = shape[3] if (modality in ['dwi', 'func'] and len(shape) > 3) else 1
-                    qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
+                    report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                     report_entries.append({
                         'filename': fname,
                         'modality': modality,
                         'dimensions': shape,
                         'n_volumes': n_vols,
-                        'qc_img_path': os.path.basename(qc_img_path)
+                        'report_img_path': os.path.basename(report_img_path)
                     })
             if modality == 'dwi':
                 # Plot niftis in subfolders
@@ -118,13 +118,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                                     img = nib.load(nifti_path)
                                     shape = img.shape
                                     n_vols = shape[3] if (modality in ['dwi'] and len(shape) > 3) else 1
-                                    qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
+                                    report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                                     report_entries.append({
                                     'filename': fname,
                                     'modality': modality,
                                     'dimensions': shape,
                                     'n_volumes': n_vols,
-                                    'qc_img_path': os.path.basename(qc_img_path)
+                                    'report_img_path': os.path.basename(report_img_path)
                                 })
                                 except Exception as e:
                                     print(f"Error processing {nifti_path}: {e}")
@@ -142,51 +142,32 @@ def write_html_report(report_entries, out_dir):
             subject_id = parts[0].replace('sub-', '')
             session_id = parts[1].replace('ses-', '')
     # Compose report file name and title
-    report_fname = f"sub-{subject_id}_ses-{session_id}_qc_report.html"
+    report_fname = f"sub-{subject_id}_ses-{session_id}_report.html"
     html_path = os.path.join(out_dir, report_fname)
     report_title = f"NIfTI Report for {subject_id} {session_id}"
+    subjects = sorted(set(
+        entry['filename'].split('_')[0].replace('sub-', '') for entry in report_entries
+    ))
+    sessions = sorted(set(
+        entry['filename'].split('_')[1].replace('ses-', '') for entry in report_entries
+    ))
+    modalities = sorted(set(entry['modality'] for entry in report_entries))
+
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{report_title}</title>\n")
         f.write("""
         <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
-        .qc-entry { margin-bottom: 40px; }
-        .qc-info { font-size: 1.1em; margin-bottom: 8px; }
-        .qc-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
+        .report-entry { margin-bottom: 40px; }
+        .report-info { font-size: 1.1em; margin-bottom: 8px; }
+        .report-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
         </style>
-        """)
-        f.write("</head><body>\n")
-        f.write(f"<h1>{report_title}</h1>\n")
-        for entry in report_entries:
-            # Extract subject and session from filename
-            parts = entry['filename'].split('_')
-            subj = parts[0].replace('sub-', '') if len(parts) > 0 else "unknown"
-            sess = parts[1].replace('ses-', '') if len(parts) > 1 else "unknown"
-            f.write(f"<div class='qc-entry' data-subject='{subj}' data-session='{sess}' data-modality='{entry['modality']}'>\n")
-            f.write(
-                f"<div class='qc-info'><b>File Name:</b> {entry['filename']} &nbsp; "
-                f"<b>Modality:</b> {entry['modality']} &nbsp; "
-                f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
-                f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
-            )
-            f.write(f"<img class='qc-img' src='{entry['qc_img_path']}' alt='{entry['filename']}'>\n")
-            f.write("</div>\n")
-        # Build dropdown menu for navigation
-        subjects = sorted(set(
-            entry['filename'].split('_')[0].replace('sub-', '') for entry in report_entries
-        ))
-        sessions = sorted(set(
-            entry['filename'].split('_')[1].replace('ses-', '') for entry in report_entries
-        ))
-        modalities = sorted(set(entry['modality'] for entry in report_entries))
-        # Create dropdown HTML
-        f.write("""
         <script>
-        function filterQC() {
+        function filterreport() {
             var subj = document.getElementById('subjectDropdown').value;
             var sess = document.getElementById('sessionDropdown').value;
             var mod = document.getElementById('modalityDropdown').value;
-            var entries = document.getElementsByClassName('qc-entry');
+            var entries = document.getElementsByClassName('report-entry');
             for (var i = 0; i < entries.length; i++) {
                 var entry = entries[i];
                 var show = true;
@@ -197,9 +178,12 @@ def write_html_report(report_entries, out_dir):
             }
         }
         </script>
-        <div id='qc-dropdown-bar' style='position:fixed;top:0;left:0;width:100%;background:#f9f9f9;border-bottom:1px solid #ccc;z-index:1000;padding:12px 0;'>
+        """)
+        f.write("</head><body>\n")
+        f.write("""
+        <div id='report-dropdown-bar' style='position:fixed;top:0;left:0;width:100%;background:#f9f9f9;border-bottom:1px solid #ccc;z-index:1000;padding:12px 0;'>
             <label style='margin-right:20px;'>Subject:
-            <select id='subjectDropdown' onchange='filterQC()'>
+            <select id='subjectDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for s in subjects:
@@ -208,7 +192,7 @@ def write_html_report(report_entries, out_dir):
             </select>
             </label>
             <label style='margin-right:20px;'>Session:
-            <select id='sessionDropdown' onchange='filterQC()'>
+            <select id='sessionDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for s in sessions:
@@ -217,7 +201,7 @@ def write_html_report(report_entries, out_dir):
             </select>
             </label>
             <label style='margin-right:20px;'>Modality:
-            <select id='modalityDropdown' onchange='filterQC()'>
+            <select id='modalityDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for m in modalities:
@@ -228,6 +212,21 @@ def write_html_report(report_entries, out_dir):
         </div>
         <div style='height:60px;'></div>
         """)
+        f.write(f"<h1>{report_title}</h1>\n")
+        for entry in report_entries:
+            # Extract subject and session from filename
+            parts = entry['filename'].split('_')
+            subj = parts[0].replace('sub-', '') if len(parts) > 0 else "unknown"
+            sess = parts[1].replace('ses-', '') if len(parts) > 1 else "unknown"
+            f.write(f"<div class='report-entry' data-subject='{subj}' data-session='{sess}' data-modality='{entry['modality']}'>\n")
+            f.write(
+                f"<div class='report-info'><b>File Name:</b> {entry['filename']} &nbsp; "
+                f"<b>Modality:</b> {entry['modality']} &nbsp; "
+                f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
+                f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
+            )
+            f.write(f"<img class='report-img' src='{entry['report_img_path']}' alt='{entry['filename']}'>\n")
+            f.write("</div>\n")
         f.write("</body></html>\n")
     print(f"HTML report written to {html_path}")
 

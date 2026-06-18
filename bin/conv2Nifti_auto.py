@@ -695,17 +695,17 @@ if __name__ == "__main__":
 
     # plot QC images for nifti files
     print("Plotting Report images for nifti files \33[5m...\33[0m (wait!)")
-    qc_output_dir = os.path.join(output_dir, "Report")
-    if not os.path.exists(qc_output_dir):
-        os.mkdir(qc_output_dir)
+    report_output_dir = os.path.join(output_dir, "Report")
+    if not os.path.exists(report_output_dir):
+        os.mkdir(report_output_dir)
     report_entries = []
     for subject_dir in glob.glob(os.path.join(output_dir, "sub-*")):
         subject_id = os.path.basename(subject_dir)
         print(f"Processing subject: {subject_id}")
-        report_entries.extend(process_subject(subject_dir, qc_output_dir, n_slices=10))
+        report_entries.extend(process_subject(subject_dir, report_output_dir, n_slices=10))
     if report_entries:
-        write_html_report(report_entries, qc_output_dir)
-        print(f"Report written to {os.path.join(qc_output_dir, 'sub-*_ses-*_qc_report.html')}")
+        write_html_report(report_entries, report_output_dir)
+        print(f"Report written to {os.path.join(report_output_dir, 'sub-*_ses-*_report.html')}")
     else:
         print("No NIfTI files found for reporting.")
         logging.warning("No NIfTI files found for reporting.")

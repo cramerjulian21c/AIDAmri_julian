@@ -136,7 +136,7 @@ def _plot_bet_image(bet_path, out_dir, project_dir, n_slices):
 
     fig.suptitle(f"BET Report: {Path(bet_path).name}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    png_path = Path(out_dir) / _safe_png_name(bet_path, project_dir, "bet_qc")
+    png_path = Path(out_dir) / _safe_png_name(bet_path, project_dir, "bet_report")
     fig.savefig(png_path, dpi=120)
     plt.close(fig)
     return png_path, shape, zooms, mask_path if mask_path.exists() else None
@@ -188,7 +188,7 @@ def _plot_registration_overlay(bet_path, anno_path, out_dir, project_dir, n_slic
 
     fig.suptitle(f"Registration Report: {Path(bet_path).name} + {Path(anno_path).name}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    png_path = Path(out_dir) / _safe_png_name(anno_path, project_dir, "registration_qc")
+    png_path = Path(out_dir) / _safe_png_name(anno_path, project_dir, "registration_report")
     fig.savefig(png_path, dpi=120)
     plt.close(fig)
     return png_path, shape, anno_shape, zooms
@@ -206,17 +206,17 @@ def _write_report(entries, out_dir, title, report_name):
             """
             <style>
             body { font-family: Arial, sans-serif; margin: 40px; }
-            .qc-entry { margin-bottom: 40px; }
-            .qc-info { font-size: 1.0em; margin-bottom: 8px; line-height: 1.5; }
-            .qc-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
-            #qc-dropdown-bar { position: fixed; top: 0; left: 0; width: 100%; background: #f9f9f9; border-bottom: 1px solid #ccc; z-index: 1000; padding: 12px 40px; box-sizing: border-box; }
+            .report-entry { margin-bottom: 40px; }
+            .report-info { font-size: 1.0em; margin-bottom: 8px; line-height: 1.5; }
+            .report-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
+            #report-dropdown-bar { position: fixed; top: 0; left: 0; width: 100%; background: #f9f9f9; border-bottom: 1px solid #ccc; z-index: 1000; padding: 12px 40px; box-sizing: border-box; }
             </style>
             <script>
-            function filterQC() {
+            function filterreport() {
                 var subj = document.getElementById('subjectDropdown').value;
                 var sess = document.getElementById('sessionDropdown').value;
                 var mod = document.getElementById('modalityDropdown').value;
-                var entries = document.getElementsByClassName('qc-entry');
+                var entries = document.getElementsByClassName('report-entry');
                 for (var i = 0; i < entries.length; i++) {
                     var entry = entries[i];
                     var show = true;
@@ -230,14 +230,14 @@ def _write_report(entries, out_dir, title, report_name):
             """
         )
         f.write("</head><body>\n")
-        f.write("<div id='qc-dropdown-bar'>\n")
+        f.write("<div id='report-dropdown-bar'>\n")
         for label, element_id, values in (
             ("Subject", "subjectDropdown", subjects),
             ("Session", "sessionDropdown", sessions),
             ("Modality", "modalityDropdown", modalities),
         ):
             f.write(f"<label style='margin-right:20px;'>{label}: ")
-            f.write(f"<select id='{element_id}' onchange='filterQC()'>")
+            f.write(f"<select id='{element_id}' onchange='filterreport()'>")
             f.write("<option value='all'>All</option>")
             for value in values:
                 escaped_value = html.escape(value)
@@ -248,17 +248,17 @@ def _write_report(entries, out_dir, title, report_name):
 
         for entry in entries:
             f.write(
-                "<div class='qc-entry' "
+                "<div class='report-entry' "
                 f"data-subject='{html.escape(entry['subject'])}' "
                 f"data-session='{html.escape(entry['session'])}' "
                 f"data-modality='{html.escape(entry['modality'])}'>\n"
             )
-            f.write("<div class='qc-info'>")
+            f.write("<div class='report-info'>")
             for label, value in entry["info"]:
                 f.write(f"<b>{html.escape(label)}:</b> {html.escape(str(value))} &nbsp; ")
             f.write("</div>\n")
             f.write(
-                f"<img class='qc-img' src='{html.escape(entry['qc_img_path'])}' "
+                f"<img class='report-img' src='{html.escape(entry['report_img_path'])}' "
                 f"alt='{html.escape(entry['image_alt'])}'>\n"
             )
             f.write("</div>\n")
@@ -291,7 +291,7 @@ def build_bet_qc_report(project_dir, n_slices=10):
                     "subject": subject,
                     "session": session,
                     "modality": modality,
-                    "qc_img_path": png_path.name,
+                    "report_img_path": png_path.name,
                     "image_alt": bet_path.name,
                     "info": info,
                 }
@@ -301,7 +301,7 @@ def build_bet_qc_report(project_dir, n_slices=10):
 
     if not entries:
         return None, 0
-    html_path = _write_report(entries, out_dir, "BET Report", "bet_qc_report.html")
+    html_path = _write_report(entries, out_dir, "BET Report", "bet_report.html")
     return html_path, len(entries)
 
 
@@ -338,7 +338,7 @@ def build_registration_qc_report(project_dir, n_slices=10):
                     "subject": subject,
                     "session": session,
                     "modality": modality,
-                    "qc_img_path": png_path.name,
+                    "report_img_path": png_path.name,
                     "image_alt": f"{bet_path.name} + {anno_path.name}",
                     "info": info,
                 }
@@ -352,6 +352,6 @@ def build_registration_qc_report(project_dir, n_slices=10):
         entries,
         out_dir,
         "Registration Report: BET + AnnoSplit_parental",
-        "registration_qc_report.html",
+        "registration_report.html",
     )
     return html_path, len(entries)
