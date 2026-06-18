@@ -83,7 +83,7 @@ def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, ReferenceBrain_templat
         raise
 
     # resmaple Reference Brain Template
-    outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_TemplateReference.nii.gz')
+    outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_TemplateSIGMA.nii.gz')
 
     command = f"reg_resample -ref {inputVolume} -flo {ReferenceBrain_template} -cpp {outputCPP} -res {outputAnno}"
     command_args = shlex.split(command)
