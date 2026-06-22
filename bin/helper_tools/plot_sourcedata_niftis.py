@@ -36,6 +36,9 @@ def _display_limits(data):
         high = low + 1
     return low, high
 
+def _voxel_size(img):
+    return tuple(round(float(z), 4) for z in img.header.get_zooms()[:3])
+
 def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     img = nib.load(nifti_path)
     zooms = img.header.get_zooms()[:3]
@@ -141,11 +144,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                     img = nib.load(nifti_path)
                     shape = img.shape
                     n_vols = shape[3] if (modality in ['dwi', 'func'] and len(shape) > 3) else 1
+                    voxel_size = _voxel_size(img)
                     report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                     report_entries.append({
                         'filename': fname,
                         'modality': modality,
                         'dimensions': shape,
+                        'voxel_size': voxel_size,
                         'n_volumes': n_vols,
                         'report_img_path': os.path.basename(report_img_path)
                     })
@@ -161,11 +166,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                                     img = nib.load(nifti_path)
                                     shape = img.shape
                                     n_vols = shape[3] if (modality in ['dwi'] and len(shape) > 3) else 1
+                                    voxel_size = _voxel_size(img)
                                     report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                                     report_entries.append({
                                     'filename': fname,
                                     'modality': modality,
                                     'dimensions': shape,
+                                    'voxel_size': voxel_size,
                                     'n_volumes': n_vols,
                                     'report_img_path': os.path.basename(report_img_path)
                                 })
@@ -266,6 +273,7 @@ def write_html_report(report_entries, out_dir):
                 f"<div class='report-info'><b>File Name:</b> {entry['filename']} &nbsp; "
                 f"<b>Modality:</b> {entry['modality']} &nbsp; "
                 f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
+                f"<b>Voxel size:</b> {entry['voxel_size']} &nbsp; "
                 f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
             )
             f.write(f"<img class='report-img' src='{entry['report_img_path']}' alt='{entry['filename']}'>\n")
