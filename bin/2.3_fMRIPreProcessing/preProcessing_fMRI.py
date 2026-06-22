@@ -187,16 +187,16 @@ if __name__ == "__main__":
     requiredNamed.add_argument('-i', '--input', help='Path to the RAW data of rsfMRI NIfTI file', required=True)
 
     parser.add_argument('-f', '--frac',
-                        help='Fractional intensity threshold - default=0.3, smaller values give larger brain outline estimates',
-                        nargs='?', type=float, default=0.15)
-    parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=45', nargs='?', type=int ,default=45)
+                        help='Fractional intensity threshold - default=0.1, smaller values give larger brain outline estimates',
+                        nargs='?', type=float, default=0.1)
+    parser.add_argument('-r', '--radius', help='Head radius (mm not voxels) - default=60', nargs='?', type=int ,default=60)
     parser.add_argument(
         '-g',
         '--horizontal-gradient',
-        help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
+        help='Horizontal gradient in fractional intensity threshold - default=0.13. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         nargs='?',
         type=float,
-        default=0.0,
+        default=0.13,
     )
     parser.add_argument(
         '-c', '--center',

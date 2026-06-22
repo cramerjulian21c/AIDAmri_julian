@@ -28,7 +28,7 @@ import glob
 import subprocess
 import shlex
 
-def regABA2DTI(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile):
+def regSIG2DTI(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile):
     outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
     outputAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixAff.txt')
     
@@ -256,8 +256,8 @@ def regABA2DTI(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,bra
     #Textfiles for DSI Studio lookup
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lib_dir = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir, "lib"))
-    anno_lut_src = os.path.join(lib_dir, "ARA_annotationR+2000.nii.txt")
-    annop_lut_src = os.path.join(lib_dir, "annoVolume+2000_rsfMRI.nii.txt")
+    anno_lut_src = os.path.join(lib_dir, "sigma", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt")
+    annop_lut_src = os.path.join(lib_dir, "sigma", "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt")
 
     needed = [anno_path, annop_path]
     missing = [p for p in needed if not os.path.exists(p)]
@@ -334,7 +334,7 @@ def find_relatedData(pathBase):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='Registration Allen Brain to DTI')
+    parser = argparse.ArgumentParser(description='Registration SIGMA Brain to DTI')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i', '--inputVolume', help='Path to the BET file of DTI data after preprocessing',
                                required=True)
@@ -342,11 +342,11 @@ if __name__ == "__main__":
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask (for example: P5)', nargs='?', type=str,
                         default=None)
     parser.add_argument('-s', '--splitAnno', help='Split annotations atlas', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/ARA_annotationR+2000.nii.gz')
+                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/sigma/SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz')
     parser.add_argument('-f', '--splitAnno_rsfMRI', help='Split annotations atlas for rsfMRI/DTI', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/annoVolume+2000_rsfMRI.nii.gz')
+                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/sigma/SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz')
     parser.add_argument('-a', '--anno_rsfMRI', help='Parental Annotations atlas for rsfMRI/DTI', nargs='?', type=str,
-                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/annoVolume.nii.gz')
+                        default=os.path.abspath(os.path.join(os.getcwd(), os.pardir,os.pardir))+'/lib/sigma/SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz')
 
     args = parser.parse_args()
 
@@ -429,7 +429,7 @@ if __name__ == "__main__":
     if not os.path.exists(anno_rsfMRI):
         sys.exit("Error: '%s' is not an existing directory." % (anno_rsfMRI,))
 
-    output = regABA2DTI(inputVolume, stroke_mask, refStroke_mask, T2data, brain_template, brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile)
+    output = regSIG2DTI(inputVolume, stroke_mask, refStroke_mask, T2data, brain_template, brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile)
 
     current_dir = os.path.dirname(inputVolume)
     # look for denoised data and register if found

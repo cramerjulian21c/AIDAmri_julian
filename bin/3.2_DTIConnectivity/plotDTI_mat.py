@@ -18,6 +18,14 @@ import scipy.io as sio
 np.seterr(divide='ignore', invalid='ignore')
 import seaborn as sns
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+DEFAULT_SIGMA_LABEL_FILE = os.path.join(
+    REPO_ROOT,
+    "lib",
+    "sigma",
+    "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt",
+)
+
 
 def intersect_mtlb(a, b):
     a1, ia = np.unique(a, return_index=True)
@@ -28,25 +36,44 @@ def intersect_mtlb(a, b):
     return ia[np.isin(a1, c)]
 
 
-def getRefLabels(prefix):
-    if "rsfMRISplit" in prefix:
-        dataTemplate = np.loadtxt(
-            os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume+2000_rsfMRI.nii.txt',
-            dtype=str)
-        refLabels = dataTemplate[:, 1]
+def parse_label_line(line):
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
 
-    elif "rsfMRI" in prefix:
-        dataTemplate = np.loadtxt(
-            os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume.nii.txt', dtype=str)
-        refLabels = dataTemplate[:, 1]
+    parts = stripped.split()
+    try:
+        label_id = int(float(parts[0]))
+    except (IndexError, ValueError):
+        return None
 
+    if '"' in stripped:
+        label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+    elif "\t" in stripped:
+        tab_parts = stripped.split("\t")
+        label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
     else:
-        dataTemplate = np.loadtxt(
-            os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/ARA_changedAnnotatiosn2DTI.txt',
-            dtype=str)
-        refLabels = dataTemplate[:, 1]
+        label_name = " ".join(parts[1:])
 
-    return refLabels
+    return label_id, label_name
+
+
+def getRefLabels(label_file=DEFAULT_SIGMA_LABEL_FILE):
+    ref_labels = []
+    with open(label_file, "r") as label_handle:
+        for line in label_handle:
+            parsed_label = parse_label_line(line)
+            if parsed_label is None:
+                continue
+
+            label_id, label_name = parsed_label
+            if label_id > 0:
+                ref_labels.append(label_name)
+
+    if len(ref_labels) == 0:
+        sys.exit("Error: No labels could be read from '%s'." % (label_file,))
+
+    return np.array(ref_labels)
 
 
 def matrixMaker(inputPath):
@@ -73,7 +100,7 @@ def matrixMaker(inputPath):
     labels = tempLabels.join([chr(a) for a in labels[0]]).split('\n')
 
     # Get reference Labels
-    refLabels = getRefLabels(os.path.basename(inputPath))
+    refLabels = getRefLabels()
 
     # Intersection between ref and cur labels
     ia = intersect_mtlb(refLabels, labels)
@@ -100,7 +127,7 @@ def matrixMaker(inputPath):
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
              rotation_mode="anchor")
 
-    ax.set_title("DTI conncectivity between ARA regions")
+    ax.set_title("DTI connectivity between SIGMA regions")
     plt.show()
 
     return connectivity

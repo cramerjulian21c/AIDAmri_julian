@@ -36,6 +36,7 @@ import openpyxl
 import contextlib
 import io
 
+from helper_tools.plot_sourcedata_niftis import process_subject, write_html_report
 
 def create_slice_timings(method_file, scanid, out_file):
     # read in method file to search for parameters
@@ -693,22 +694,21 @@ if __name__ == "__main__":
         logging.warning("DWI post-processing issue details:\n%s", "\n".join(dwi_issue_details))
 
     # plot QC images for nifti files
-    print("Plotting QC images for nifti files \33[5m...\33[0m (wait!)")
-    from helper_tools.plot_sourcedata_niftis import process_subject, write_html_report
-    qc_output_dir = os.path.join(output_dir, "qc_images")
-    if not os.path.exists(qc_output_dir):
-        os.mkdir(qc_output_dir)
+    print("Plotting Report images for nifti files \33[5m...\33[0m (wait!)")
+    report_output_dir = os.path.join(output_dir, "Report")
+    if not os.path.exists(report_output_dir):
+        os.mkdir(report_output_dir)
     report_entries = []
     for subject_dir in glob.glob(os.path.join(output_dir, "sub-*")):
         subject_id = os.path.basename(subject_dir)
         print(f"Processing subject: {subject_id}")
-        report_entries.extend(process_subject(subject_dir, qc_output_dir, n_slices=10))
+        report_entries.extend(process_subject(subject_dir, report_output_dir, n_slices=10))
     if report_entries:
-        write_html_report(report_entries, qc_output_dir)
-        print(f"QC report written to {os.path.join(qc_output_dir, 'sub-*_ses-*_qc_report.html')}")
+        write_html_report(report_entries, report_output_dir)
+        print(f"Report written to {os.path.join(report_output_dir, 'sub-*_ses-*_report.html')}")
     else:
-        print("No NIfTI files found for QC reporting.")
-        logging.warning("No NIfTI files found for QC reporting.")
+        print("No NIfTI files found for reporting.")
+        logging.warning("No NIfTI files found for reporting.")
 
     # find MEMS and fmri files 
     mese_scan_data = {}

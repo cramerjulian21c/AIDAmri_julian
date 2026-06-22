@@ -290,23 +290,23 @@ if __name__ == "__main__":
     parser.add_argument(
         '-f',
         '--frac',
-        help='Fractional intensity threshold - default=0.4, smaller values give larger brain outline estimates',
+        help='Fractional intensity threshold - default=0.26, smaller values give larger brain outline estimates',
         type=float,
-        default=0.4,
+        default=0.26,
     )
     parser.add_argument(
         '-r',
         '--radius',
-        help='Head radius (mm not voxels) - default=45',
+        help='Head radius (mm not voxels) - default=55',
         type=int,
-        default=45,
+        default=55,
     )
     parser.add_argument(
         '-g',
         '--horizontal-gradient',
-        help='Horizontal gradient in fractional intensity threshold - default=0.0. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
+        help='Horizontal gradient in fractional intensity threshold - default=0.07. Not for bet4animals! Higher positive values make the BET stricter posterior and less stricter anterior (snout)',
         type=float,
-        default=0.0,
+        default=0.07,
     )
     parser.add_argument(
         '-c', '--center',

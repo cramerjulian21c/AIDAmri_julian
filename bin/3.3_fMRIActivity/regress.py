@@ -220,7 +220,8 @@ def filterFSL(input_file,highpass,tempMean):
 #adjust default parameters if needed
 def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
                     slice_order=None, costum_timings=None,
-                    bet_method="bet", center=None):
+                    bet_method="bet", frac=0.1, radius=60,
+                    gradient=0.13, center=None):
     # generate folder regr images
     
     origin_Path = os.path.dirname(os.path.dirname(input_File))
@@ -252,9 +253,9 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
     else:
         file_nameEPI_BET, mask_file = applyBET(
             meanRegr_File,
-            frac=0.35,
-            radius=45,
-            horizontal_gradient=0.1,
+            frac=frac,
+            radius=radius,
+            horizontal_gradient=gradient,
             use_bet4animal=bet_method == "bet4animal",
             center=center,
             return_mask=True
@@ -320,6 +321,9 @@ if __name__ == "__main__":
     requiredNamed.add_argument('-i','--input', help='Path to input file',required=True)
     parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
                         help='Brain extraction method: skip, bet or bet4animal. Default: bet')
+    parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
+    parser.add_argument('--bet-radius', type=int, default=60, help='BET head radius in mm')
+    parser.add_argument('--bet-gradient', type=float, default=0.13, help='BET horizontal gradient')
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
 
@@ -332,5 +336,8 @@ if __name__ == "__main__":
     result = startRegression(
         input,
         bet_method=args.bet,
+        frac=args.bet_frac,
+        radius=args.bet_radius,
+        gradient=args.bet_gradient,
         center=args.center
     )

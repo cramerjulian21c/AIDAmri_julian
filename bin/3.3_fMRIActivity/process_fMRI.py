@@ -26,6 +26,8 @@ import json
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+
 
 def copyAtlasOfData(path,post,labels):
     fileALL = glob.glob(path + '/*' + post + '.nii.gz')
@@ -162,20 +164,32 @@ def copyRawPhysioData(file_name,i32_Path):
     json_file = os.path.join(os.path.dirname(file_name), json_name)
     sub_name = (Path(file_name).name.split("_")[0]).split("-")[1]
     studyName = (Path(os.path.dirname(os.path.dirname(file_name))).name).split("-")[1]
+    physioPath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
+    scanid = None
     
     relatedPhysioData = []
-    if os.path.exists(json_file):
-        with open(json_file, 'r') as infile:
-            content = json.load(infile)
-            scanid = str(content["ScanID"]) + ".I32"
+    if not os.path.exists(json_file):
+        print("Error: '%s' has no metadata JSON file for physio lookup." % (file_name,))
+        return []
 
-        physioPath=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
-        
-        conditions = [sub_name , studyName]
-        for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
-            filename = os.path.basename(file)
-            if all(condition in filename for condition in conditions):
-                relatedPhysioData.append(file)
+    with open(json_file, 'r') as infile:
+        content = json.load(infile)
+
+    if "ScanID" not in content:
+        print("Error: '%s' has no ScanID in metadata JSON for physio lookup." % (json_file,))
+        return []
+
+    scanid = str(content["ScanID"]) + ".I32"
+
+    if not os.path.exists(physioPath):
+        print("Error: '%s' is not an existing Physio directory." % (physioPath,))
+        return []
+
+    conditions = [sub_name , studyName]
+    for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
+        filename = os.path.basename(file)
+        if all(condition in filename for condition in conditions):
+            relatedPhysioData.append(file)
 
     if len(relatedPhysioData)>1:
         sys.exit("Warning: '%s' has no unique physio data for scan %s." % (physioPath, scanid,))
@@ -200,7 +214,14 @@ def create_txt_file(file, data):
 def delete_txt_file(file):
     os.remove(file)
 
-def startProcess(Rawfile_name, bet_method="bet", center=None):
+def startProcess(
+    Rawfile_name,
+    bet_method="bet",
+    frac=0.1,
+    radius=60,
+    gradient=0.13,
+    center=None,
+):
     # generate folder for images
     origin_Path = os.path.dirname(Rawfile_name)
     proc_Path = os.path.join(origin_Path, 'rs-fMRI_niiData')
@@ -240,9 +261,9 @@ def startProcess(Rawfile_name, bet_method="bet", center=None):
     else:
         file_nameEPI_BET,mask_file = applyBET(
             file_nameEPI,
-            frac=0.35,
-            radius=45,
-            horizontal_gradient=0.1,
+            frac=frac,
+            radius=radius,
+            horizontal_gradient=gradient,
             use_bet4animal=bet_method == "bet4animal",
             center=center,
             return_mask=True
@@ -285,6 +306,9 @@ if __name__ == "__main__":
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
     parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
                         help='Brain extraction method for fMRI process: skip, bet or bet4animal. Default: bet')
+    parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
+    parser.add_argument('--bet-radius', type=int, default=60, help='BET head radius in mm')
+    parser.add_argument('--bet-gradient', type=float, default=0.13, help='BET horizontal gradient')
     parser.add_argument('-ctr', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
 
     args = parser.parse_args()
@@ -294,13 +318,11 @@ if __name__ == "__main__":
     else:
         stc = False
 
-    labels = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annotation_50CHANGEDanno_label_IDs.txt'
-    labelNames = os.path.abspath(os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume.nii.txt'
-    labels2000 = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annotation_50CHANGEDanno_label_IDs+2000.txt'
-    labelNames2000 = os.path.abspath(
-        os.path.join(os.getcwd(), os.pardir, os.pardir)) + '/lib/annoVolume+2000_rsfMRI.nii.txt'
+    sigma_labels = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
+    labels = sigma_labels
+    labelNames = sigma_labels
+    labels2000 = sigma_labels
+    labelNames2000 = sigma_labels
     input_file = None
     if args.input is not None and args.input is not None:
         input_file = args.input
@@ -310,6 +332,9 @@ if __name__ == "__main__":
     mcfFile_name = startProcess(
         input_file,
         bet_method=args.bet,
+        frac=args.bet_frac,
+        radius=args.bet_radius,
+        gradient=args.bet_gradient,
         center=args.center
     )
 
@@ -346,6 +371,9 @@ if __name__ == "__main__":
             slice_order_path,
             costum_timings_path,
             bet_method=args.bet,
+            frac=args.bet_frac,
+            radius=args.bet_radius,
+            gradient=args.bet_gradient,
             center=args.center
         )
 
@@ -362,6 +390,9 @@ if __name__ == "__main__":
             TR,
             stc,
             bet_method=args.bet,
+            frac=args.bet_frac,
+            radius=args.bet_radius,
+            gradient=args.bet_gradient,
             center=args.center
         )
         print(f"sfrgr_file {sfrgr_file}")

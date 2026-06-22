@@ -1,31 +1,82 @@
+import argparse
+import csv
+import glob
+import os
+import sys
+
 import nibabel as nii
 import numpy as np
-import argparse
-import os
-import glob
-import csv
-import sys  # Added import statement for sys module
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
+DEFAULT_LABEL_FILE = os.path.join(
+    REPO_ROOT,
+    "lib",
+    "sigma",
+    "SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt",
+)
+
+
+def find_single_file(input_folder, pattern, description):
+    matches = sorted(glob.glob(os.path.join(input_folder, pattern)))
+    if len(matches) == 0:
+        sys.exit("Error: No %s found in '%s'." % (description, input_folder,))
+    if len(matches) > 1:
+        sys.exit("Error: Multiple %s found in '%s': %s" % (description, input_folder, ", ".join(matches),))
+    return matches[0]
+
 
 def getOutfile(atlas_type, img_file, suffix):
     imgName = os.path.basename(img_file)
-    t2map = str.split(imgName, '.')[-3]
-    acronym_name = os.path.basename(atlas_type).split('.')[0]
-    outFile = os.path.join(os.path.dirname(img_file), f"{t2map}_T2values_{acronym_name}_{suffix}.csv")
+    if imgName.endswith(".nii.gz"):
+        t2map = imgName[:-len(".nii.gz")]
+    elif imgName.endswith(".nii"):
+        t2map = imgName[:-len(".nii")]
+    else:
+        t2map = os.path.splitext(imgName)[0]
+    outFile = os.path.join(os.path.dirname(img_file), f"{t2map}_T2values_{atlas_type}_{suffix}.csv")
     return outFile
 
-def extractT2MapdataMean(img, rois, outfile, txt_file):
+
+def load_label_lookup(label_file):
+    labels = {}
+    with open(label_file, "r") as label_handle:
+        for line_number, line in enumerate(label_handle, start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            parts = stripped.split()
+            try:
+                label_id = int(float(parts[0]))
+            except (IndexError, ValueError):
+                print("Warning: Skipping invalid label line %i in '%s'." % (line_number, label_file,))
+                continue
+
+            if '"' in stripped:
+                label_name = stripped.split('"', 1)[1].rsplit('"', 1)[0]
+            elif "\t" in stripped:
+                tab_parts = stripped.split("\t")
+                label_name = tab_parts[1].strip() if len(tab_parts) > 1 else ""
+            else:
+                label_name = " ".join(parts[1:])
+
+            labels[label_id] = label_name
+
+    if len(labels) == 0:
+        sys.exit("Error: No labels could be read from '%s'." % (label_file,))
+
+    return labels
+
+
+def extractT2MapdataMean(img, rois, outfile, label_lookup):
     slices = np.unique(np.where(rois > 0)[2])
-    regions = np.delete(np.unique(rois), 0)
-    
-    indices = None
-    if txt_file is not None:
-        ref_lines = open(txt_file).readlines()
-        indices = {int(line.split('\t')[0]): line.split('\t')[1].strip() for line in ref_lines}
-    
-    with open(outfile, 'w', newline='') as csvfile:
+    regions = np.unique(rois)
+    regions = regions[regions > 0]
+
+    with open(outfile, "w", newline="") as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(["Slice", "ARA IDs", "Names", "T2 Values", "Region Sizes"])
-        
+        csv_writer.writerow(["Slice", "Atlas IDs", "Names", "T2 Values", "Region Sizes"])
+
         for s in slices:
             for r in regions:
                 region_voxels = np.where((rois[:, :, s] == r) & (rois[:, :, s] > 0))
@@ -33,75 +84,68 @@ def extractT2MapdataMean(img, rois, outfile, txt_file):
                     continue
                 mean_value = np.mean(img[region_voxels])
                 region_size = len(region_voxels[0])
-                acro = indices.get(r, "")  # Using dict.get() to avoid KeyError
-                csv_writer.writerow([s, r, acro, "%.2f" % mean_value, "%.2f" % region_size])
+                label_id = int(round(float(r)))
+                label_name = label_lookup.get(label_id, "")
+                csv_writer.writerow([s, label_id, label_name, "%.2f" % mean_value, "%.2f" % region_size])
 
-def extractT2MapdataPerRegion(img, rois, outfile, txt_file):
-    regions = np.delete(np.unique(rois), 0)
-    
-    indices = None
-    if txt_file is not None:
-        ref_lines = open(txt_file).readlines()
-        indices = {int(line.split('\t')[0]): line.split('\t')[1].strip() for line in ref_lines}
-    
-    with open(outfile, 'w', newline='') as csvfile:
+
+def extractT2MapdataPerRegion(img, rois, outfile, label_lookup):
+    regions = np.unique(rois)
+    regions = regions[regions > 0]
+
+    with open(outfile, "w", newline="") as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(["ARA IDs", "Names", "T2 Values", "Region Sizes"])
-        
+        csv_writer.writerow(["Atlas IDs", "Names", "T2 Values", "Region Sizes"])
+
         for r in regions:
             region_voxels = np.where((rois == r) & (rois > 0))
             if len(region_voxels[0]) == 0:
                 continue
             mean_value = np.mean(img[region_voxels])
             region_size = len(region_voxels[0])
-            acro = indices.get(r, "")  # Using dict.get() to avoid KeyError
-            csv_writer.writerow([r, acro, "%.2f" % mean_value, "%.2f" % region_size])
+            label_id = int(round(float(r)))
+            label_name = label_lookup.get(label_id, "")
+            csv_writer.writerow([label_id, label_name, "%.2f" % mean_value, "%.2f" % region_size])
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Extracts the T2 values from the T2 map for every atlas region')
-    requiredNamed = parser.add_argument_group('Required named arguments')
-    requiredNamed.add_argument('-i', '--input', help='Input T2 map, should be a nifti file')
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Extracts the T2 values from the T2 map for every atlas region")
+    requiredNamed = parser.add_argument_group("Required named arguments")
+    requiredNamed.add_argument("-i", "--input", help="Input T2 map, should be a NIfTI file", required=True)
+    parser.add_argument("-l", "--label-file", help="Atlas label lookup file", default=DEFAULT_LABEL_FILE)
     args = parser.parse_args()
-
-    acronyms_files = glob.glob(os.path.join(os.getcwd(), "*.txt"))
-    print(f"Extracting T2 values for: {args.input}")
-    print(f"Acronym files: {acronyms_files}")
-
-    # Checking if input file is provided
-    if args.input is None:
-        sys.exit("Error: No input file provided.")
 
     image_file = args.input
     if not os.path.exists(image_file):
-        sys.exit(f"Error: '{image_file}' is not an existing image nii-file.")
+        sys.exit("Error: '%s' is not an existing image NIfTI file." % (image_file,))
+
+    if not os.path.exists(args.label_file):
+        sys.exit("Error: '%s' is not an existing label file." % (args.label_file,))
+
+    image_dir = os.path.dirname(image_file)
+    parental_atlas = find_single_file(image_dir, "*AnnoSplit_parental.nii*", "parental atlas")
+    non_parental_atlas = find_single_file(image_dir, "*AnnoSplit.nii*", "non-parental atlas")
+
+    print("Extracting T2 values for: %s" % image_file)
+    print("Using label file: %s" % args.label_file)
 
     img_data = nii.load(image_file)
-    img = img_data.get_fdata()  # Using get_fdata() for compatibility
-    
-    parental_atlas = glob.glob(os.path.join(os.path.dirname(image_file), "*AnnoSplit_parental.nii*"))[0]
-    non_parental_atlas = glob.glob(os.path.join(os.path.dirname(image_file), "*AnnoSplit.nii*"))[0]
+    img = img_data.get_fdata()
+    label_lookup = load_label_lookup(args.label_file)
 
-    for acronyms in acronyms_files:  # Corrected variable name to acronyms
-        try:
-            if "parentARA_LR" in acronyms:
-                atlas_type = "parental"
-                atlas = parental_atlas
-            else:
-                atlas_type = "non-parental"
-                atlas = non_parental_atlas
+    for atlas_type, atlas in (("parental", parental_atlas), ("non-parental", non_parental_atlas)):
+        roi_data = nii.load(atlas)
+        rois = roi_data.get_fdata()
 
-            roi_data = nii.load(atlas)
-            rois = roi_data.get_fdata()  # Using get_fdata() for compatibility
+        if img.shape[:3] != rois.shape[:3]:
+            sys.exit("Error: image shape %s and atlas shape %s do not match." % (img.shape[:3], rois.shape[:3],))
 
-            outFileMean = getOutfile(atlas_type, image_file, "Mean")  # Fixed suffix to "Mean"
-            print(f"Outfile (Mean): {outFileMean}")
-            extractT2MapdataMean(img, rois, outFileMean, acronyms)
+        outFileMean = getOutfile(atlas_type, image_file, "Mean")
+        print("Outfile (Mean): %s" % outFileMean)
+        extractT2MapdataMean(img, rois, outFileMean, label_lookup)
 
-            outFilePerRegion = getOutfile(atlas_type, image_file, "PerRegion")  # Fixed suffix to "PerRegion"
-            print(f"Outfile (Per Region): {outFilePerRegion}")
-            extractT2MapdataPerRegion(img, rois, outFilePerRegion, acronyms)
-        except Exception as e:
-            print(f'Error while processing the T2 values: {str(e)}')  # Improved error message
-            raise  # Raising the exception to halt execution
+        outFilePerRegion = getOutfile(atlas_type, image_file, "PerRegion")
+        print("Outfile (Per Region): %s" % outFilePerRegion)
+        extractT2MapdataPerRegion(img, rois, outFilePerRegion, label_lookup)
 
     print("Finished T2 map processing")

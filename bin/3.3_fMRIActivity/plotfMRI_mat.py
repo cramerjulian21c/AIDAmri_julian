@@ -47,7 +47,7 @@ def matrixMaker(matData, output_path):
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
              rotation_mode="anchor")
 
-    ax.set_title("rsfMRI Correlation between ARA regions")
+    ax.set_title("rsfMRI correlation between SIGMA regions")
     output_file = os.path.join(output_path, "CorrMatrixHM.png")
     plt.savefig(output_file)
     plt.close()
