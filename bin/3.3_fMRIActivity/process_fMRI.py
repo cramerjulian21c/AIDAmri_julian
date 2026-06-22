@@ -164,20 +164,32 @@ def copyRawPhysioData(file_name,i32_Path):
     json_file = os.path.join(os.path.dirname(file_name), json_name)
     sub_name = (Path(file_name).name.split("_")[0]).split("-")[1]
     studyName = (Path(os.path.dirname(os.path.dirname(file_name))).name).split("-")[1]
-    
-    relatedPhysioData = []
-    if os.path.exists(json_file):
-        with open(json_file, 'r') as infile:
-            content = json.load(infile)
-            scanid = str(content["ScanID"]) + ".I32"
+    physioPath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
+    scanid = None
 
-        physioPath=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
-        
-        conditions = [sub_name , studyName]
-        for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
-            filename = os.path.basename(file)
-            if all(condition in filename for condition in conditions):
-                relatedPhysioData.append(file)
+    relatedPhysioData = []
+    if not os.path.exists(json_file):
+        print("Error: '%s' has no metadata JSON file for physio lookup." % (file_name,))
+        return []
+
+    with open(json_file, 'r') as infile:
+        content = json.load(infile)
+
+    if "ScanID" not in content:
+        print("Error: '%s' has no ScanID in metadata JSON for physio lookup." % (json_file,))
+        return []
+
+    scanid = str(content["ScanID"]) + ".I32"
+
+    if not os.path.exists(physioPath):
+        print("Error: '%s' is not an existing Physio directory." % (physioPath,))
+        return []
+
+    conditions = [sub_name , studyName]
+    for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
+        filename = os.path.basename(file)
+        if all(condition in filename for condition in conditions):
+            relatedPhysioData.append(file)
 
     if len(relatedPhysioData)>1:
         sys.exit("Warning: '%s' has no unique physio data for scan %s." % (physioPath, scanid,))
