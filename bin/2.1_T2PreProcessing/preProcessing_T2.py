@@ -135,6 +135,8 @@ def spinner(stop_event, message="Working"):
     Displays a simple terminal spinner while a long-running processing step is active.
     Does not report the actual progress of external tools such as FSL BET or ANTs.
     """
+    if os.environ.get("AIDAMRI_DISABLE_SPINNER") == "1" or not sys.stdout.isatty():
+        return
     for ch in itertools.cycle("|/-\\"):
         if stop_event.is_set():
             break
