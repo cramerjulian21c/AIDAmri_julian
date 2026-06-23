@@ -568,6 +568,11 @@ if __name__ == "__main__":
             )
         if cores < 1:
             raise argparse.ArgumentTypeError("--cpu-cores must be at least 1")
+        cpu_count = multiprocessing.cpu_count()
+        if cores > cpu_count:
+            raise argparse.ArgumentTypeError(
+                f"--cpu-cores must not exceed the available CPU cores ({cpu_count})"
+            )
         return cores
 
     parser = argparse.ArgumentParser(
