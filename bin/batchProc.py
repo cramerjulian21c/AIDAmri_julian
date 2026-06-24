@@ -129,6 +129,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
             # captures stdout/stderr into the step-specific batch log.
             if any(arg.endswith("dsi_main.py") for arg in command_args):
                 child_env["AIDAMRI_DISABLE_PROCESS_LOG"] = "1"
+            child_env["AIDAMRI_DISABLE_SPINNER"] = "1"
             result = subprocess.run(
                 command_args,
                 stdout=outfile,
@@ -568,6 +569,11 @@ if __name__ == "__main__":
             )
         if cores < 1:
             raise argparse.ArgumentTypeError("--cpu-cores must be at least 1")
+        cpu_count = multiprocessing.cpu_count()
+        if cores > cpu_count:
+            raise argparse.ArgumentTypeError(
+                f"--cpu-cores must not exceed the available CPU cores ({cpu_count})"
+            )
         return cores
 
     parser = argparse.ArgumentParser(
