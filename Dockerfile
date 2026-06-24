@@ -4,7 +4,7 @@ FROM --platform=${BASE_IMAGE_PLATFORM} ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ubuntu environment setup
-RUN apt-get update -y && apt-get upgrade -y &&\
+RUN apt-get update -y &&\
 	apt-get install -y \
 	wget \
 	ca-certificates \
@@ -79,8 +79,11 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN python3 -m pip install --upgrade pip setuptools
 COPY requirements.txt requirements.txt
+# requirements.txt lists AIDAmri's direct Python dependencies.
+# constraints.txt pins the resolved versions from the reference image for reproducible builds.
+COPY constraints.txt constraints.txt
 RUN pip install --upgrade pip &&\
-	pip install -r requirements.txt
+	pip install -c constraints.txt -r requirements.txt
 
 # installation of FSL 5.0.11 with modified installer 
 COPY install/fslinstaller_mod.py ./
@@ -108,7 +111,7 @@ RUN /aida/install/install_immv.sh
 RUN echo "/aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio" > /aida/bin/3.2_DTIConnectivity/dsi_studioPath.txt
 RUN test -x /aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio
 
-RUN pip install dipy scikit-learn
-RUN pip install fslpy
+RUN pip install -c constraints.txt dipy scikit-learn
+RUN pip install -c constraints.txt fslpy
 RUN wget -O /aida/bin/bet4animal "https://git.fmrib.ox.ac.uk/fsl/bet2/-/raw/master/bet4animal?ref_type=heads&inline=false" && \
     chmod +x /aida/bin/bet4animal
