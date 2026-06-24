@@ -355,7 +355,9 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     
         # load nifti image and save the array in a dict while key is the slice number
         data = nii.load(m_d_p)
-        img_array = data.dataobj.get_unscaled()
+        # Use scaled intensities; converted NIfTIs may store int16 data with
+        # scl_slope/scl_inter, and get_unscaled() would discard that scaling.
+        img_array = data.get_fdata(dtype=np.float32)
         img_array_data[slice_number] = img_array
 
         # remove single mese file
@@ -407,7 +409,7 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
 
     # generate transposed MEMS img for later registration
     org_mems_scan = nii.load(t2_mems_path)
-    mems_data = org_mems_scan.dataobj.get_unscaled()
+    mems_data = org_mems_scan.get_fdata(dtype=np.float32)
     
     mems_data_transposed = np.transpose(mems_data, axes=(0,1,3,2))
     mems_data_first_slice = mems_data_transposed[:,:,:,1]
@@ -415,7 +417,10 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     for i in range(mems_data_transposed.shape[3]):
         mems_data_transposed[:,:,:,i] = mems_data_first_slice
         
-    transposed_copied_img = nii.Nifti1Image(mems_data_transposed, org_mems_scan.affine)
+    transposed_copied_img = nii.Nifti1Image(
+        mems_data_transposed.astype(np.float32),
+        org_mems_scan.affine,
+    )
     
     img_name = sub + "_" + ses + "_T2w_transposed_MEMS.nii.gz"
     t2_mems_transposed_path = os.path.join(output_dir, sub, ses, "t2map", img_name)
@@ -435,22 +440,26 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
 def correct_orientation(qform,sform, t2_mems_img, t2_map_img):
     # overwrite img with correct orienation
     mems_img = nii.load(t2_mems_img)
-    imgTemp = mems_img.dataobj.get_unscaled()
+    imgTemp = mems_img.get_fdata(dtype=np.float32)
 
-    mems_img.header.set_qform(qform)
-    mems_img.header.set_sform(sform)
+    mems_header = mems_img.header.copy()
+    mems_header.set_data_dtype(np.float32)
+    mems_header.set_qform(qform)
+    mems_header.set_sform(sform)
 
-    new_img = nii.Nifti1Image(imgTemp, None, mems_img.header)
+    new_img = nii.Nifti1Image(imgTemp, None, mems_header)
     nii.save(new_img, t2_mems_img)
 
     # overwrite img with correct orienation
     map_img = nii.load(t2_map_img)
-    imgTemp = map_img.dataobj.get_unscaled()
+    imgTemp = map_img.get_fdata(dtype=np.float32)
 
-    map_img.header.set_qform(qform)
-    map_img.header.set_sform(sform)
+    map_header = map_img.header.copy()
+    map_header.set_data_dtype(np.float32)
+    map_header.set_qform(qform)
+    map_header.set_sform(sform)
 
-    new_img = nii.Nifti1Image(imgTemp, None, map_img.header)
+    new_img = nii.Nifti1Image(imgTemp, None, map_header)
     nii.save(new_img, t2_map_img)
 
 

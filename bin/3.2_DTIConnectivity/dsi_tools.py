@@ -323,10 +323,12 @@ def reorient_nifti_to_lip(nifti_path):
         return nifti_path
 
     transform = nib.orientations.ornt_transform(current, target)
-    data = nib.orientations.apply_orientation(np.asanyarray(img.dataobj), transform)
+    data = nib.orientations.apply_orientation(img.get_fdata(dtype=np.float32), transform)
     new_affine = img.affine @ nib.orientations.inv_ornt_aff(transform, img.shape)
 
-    out_img = nib.Nifti1Image(data, new_affine, img.header)
+    hdr = img.header.copy()
+    hdr.set_data_dtype(np.float32)
+    out_img = nib.Nifti1Image(data, new_affine, hdr)
     out_img.set_qform(new_affine, code=1)
     out_img.set_sform(new_affine, code=1)
     nib.save(out_img, nifti_path)
