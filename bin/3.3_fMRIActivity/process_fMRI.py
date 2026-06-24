@@ -55,13 +55,15 @@ def imgScaleResize(img):
 
 def scaleBy10(input_path,inv):
     img = nii.load(input_path)
-    imgTemp = np.asanyarray(img.dataobj).copy()
+    imgTemp = img.get_fdata(dtype=np.float32)
     aff = img.affine.copy()
 
     factor = 0.1 if inv else 10.0
     aff[:3, :3] *= factor
 
-    out_img = nii.Nifti1Image(imgTemp, aff, header=img.header)
+    hdr = img.header.copy()
+    hdr.set_data_dtype(np.float32)
+    out_img = nii.Nifti1Image(imgTemp, aff, header=hdr)
     out_img.header.set_xyzt_units('mm')
     out_img.set_qform(aff, code=1)
     out_img.set_sform(aff, code=1)

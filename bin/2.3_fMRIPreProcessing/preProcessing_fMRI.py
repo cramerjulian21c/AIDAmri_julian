@@ -35,7 +35,9 @@ def create_brkraw_backup(input_file):
     shutil.copyfile(input_file, dst_path)
 
     data = nib.load(input_file)
-    raw_img = data.dataobj.get_unscaled().astype(np.float32)
+    # Preserve nibabel scaling (scl_slope/scl_inter). Using get_unscaled()
+    # would write raw int16 scanner values into the working file.
+    raw_img = data.get_fdata(dtype=np.float32)
 
     hdr = data.header.copy()
     hdr.set_data_dtype(np.float32)
