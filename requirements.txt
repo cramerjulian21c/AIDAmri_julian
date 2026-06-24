@@ -1,3 +1,5 @@
+# Direct AIDAmri Python dependencies. Version resolution is constrained by
+# constraints.txt during Docker builds to keep images reproducible.
 numpy
 scipy
 lmfit==1.0.3
