@@ -64,6 +64,25 @@ def estimate_center_intensity_based(nifti, percentile=60):
     return [cx, cy, cz], float(p)
 
 
+def transform_voxel_center_between_images(center, src_img_or_path, dst_img_or_path):
+    """
+    Map a voxel-space BET center from one NIfTI geometry to another while
+    preserving the same physical point.
+    """
+    src_img = nib.load(src_img_or_path) if isinstance(src_img_or_path, str) else src_img_or_path
+    dst_img = nib.load(dst_img_or_path) if isinstance(dst_img_or_path, str) else dst_img_or_path
+
+    center = np.asarray(center, dtype=float)
+    if center.shape != (3,):
+        raise ValueError("BET center must contain exactly three coordinates: x y z")
+
+    src_voxel = np.append(center, 1.0) # convert voxel coordinate to homogeneous coordinates
+    world = src_img.affine @ src_voxel # convert voxel coordinates into world coordinates
+    dst_voxel = np.linalg.inv(dst_img.affine) @ world # convert world coordinates into voxel coordinates of the destination image
+
+    return dst_voxel[:3].tolist()
+
+
 def skip_bet_function(input_file, return_mask=False):
     """
     Create BET-compatible outputs when BET is skipped.
@@ -194,12 +213,12 @@ def applyBET(
             os.path.basename(input_file).split(".")[0] + "AnimalBet.nii.gz",
         )
 
-        tmp_bet = os.path.join(os.path.dirname(input_file), "bet4animal_tmp_out.nii.gz")
-        tmp_mask = tmp_bet.replace(".nii.gz", "_mask.nii.gz")
-        mask_file = output_file.replace(".nii.gz", "_mask.nii.gz")
+        tmp_bet = os.path.join(os.path.dirname(input_file), "bet4animal_tmp_out.nii.gz") # output name of bet4animnal
+        tmp_mask = tmp_bet.replace(".nii.gz", "_mask.nii.gz") # bet4animal output mask
+        mask_file = output_file.replace(".nii.gz", "_mask.nii.gz") #final mask
 
         # ----- fslreorient2std -----
-        tmp_std = os.path.join(os.path.dirname(input_file), "bet4animal_reorient2std.nii.gz")
+        tmp_std = os.path.join(os.path.dirname(input_file), "bet4animal_reorient2std.nii.gz") #output of fslreorient2std/input in bet4animal
 
         cmd = ["fslreorient2std", input_file, tmp_std]
         subprocess.run(cmd, check=True)
@@ -214,6 +233,12 @@ def applyBET(
         # print("New axcodes:", nib.aff2axcodes(aff))
         if center is None:
             center, p = estimate_center_intensity_based(bet_in)
+            #print(f"Using intensity-based center in reoriented image: {center}")
+        else:
+            #original_center = center
+            center = transform_voxel_center_between_images(center, input_file, bet_in)
+            #print(f"Using user-defined center transformed for reoriented image: {original_center} -> {center}")
+            center = [int(round(c)) for c in center]
         cx, cy, cz = center
 
         cmd = [
