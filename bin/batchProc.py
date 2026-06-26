@@ -496,6 +496,8 @@ def create_qc_reports(project_path, steps):
 
     if "preprocess" in requested_steps:
         try:
+            print("Creating BET report...")
+            logging.info("Creating BET report...")
             html_path, count = build_bet_qc_report(project_path, n_slices=7)
             if html_path:
                 print(f"BET report written to {html_path} ({count} image(s))")
@@ -509,6 +511,8 @@ def create_qc_reports(project_path, steps):
 
     if "registration" in requested_steps:
         try:
+            print("Creating Registration report...")
+            logging.info("Creating Registration report...")
             html_path, count = build_registration_qc_report(project_path, n_slices=7)
             if html_path:
                 print(f"Registration report written to {html_path} ({count} image(s))")
