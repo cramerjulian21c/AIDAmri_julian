@@ -496,7 +496,7 @@ def create_qc_reports(project_path, steps):
 
     if "preprocess" in requested_steps:
         try:
-            html_path, count = build_bet_qc_report(project_path, n_slices=10)
+            html_path, count = build_bet_qc_report(project_path, n_slices=7)
             if html_path:
                 print(f"BET report written to {html_path} ({count} image(s))")
                 logging.info("BET report written to %s (%s images)", html_path, count)
