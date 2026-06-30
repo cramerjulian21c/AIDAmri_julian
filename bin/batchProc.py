@@ -23,6 +23,7 @@ from tqdm import tqdm
 import multiprocessing
 import logging
 import shlex
+import sys
 import time
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
@@ -481,7 +482,7 @@ def find(pattern, path):
     return result
 
 
-def create_qc_reports(project_path, steps):
+def create_qc_reports(project_path, steps, custom_parameters=None):
     requested_steps = set(steps)
 
     try:
@@ -498,7 +499,11 @@ def create_qc_reports(project_path, steps):
         try:
             print("Creating BET report...")
             logging.info("Creating BET report...")
-            html_path, count = build_bet_qc_report(project_path, n_slices=7)
+            html_path, count = build_bet_qc_report(
+                project_path,
+                n_slices=7,
+                custom_parameters=custom_parameters,
+            )
             if html_path:
                 print(f"BET report written to {html_path} ({count} image(s))")
                 logging.info("BET report written to %s (%s images)", html_path, count)
@@ -513,7 +518,11 @@ def create_qc_reports(project_path, steps):
         try:
             print("Creating Registration report...")
             logging.info("Creating Registration report...")
-            html_path, count = build_registration_qc_report(project_path, n_slices=7)
+            html_path, count = build_registration_qc_report(
+                project_path,
+                n_slices=7,
+                custom_parameters=custom_parameters,
+            )
             if html_path:
                 print(f"Registration report written to {html_path} ({count} image(s))")
                 logging.info("Registration report written to %s (%s images)", html_path, count)
@@ -532,6 +541,26 @@ def format_step_label(step):
         "process": "Processing",
     }
     return labels.get(step, step.capitalize())
+
+
+def get_explicit_cli_parameters(parser, args, argv):
+    """Return parsed values for options explicitly supplied on the command line."""
+    supplied_options = {value.split("=", 1)[0] for value in argv if value.startswith("-")}
+    parameters = []
+
+    for action in parser._actions:
+        if action.dest in {"help", "input"}:
+            continue
+        if not supplied_options.intersection(action.option_strings):
+            continue
+
+        long_option = next(
+            (option for option in action.option_strings if option.startswith("--")),
+            action.option_strings[0],
+        )
+        parameters.append((long_option, getattr(args, action.dest)))
+
+    return parameters
 
 
 TQDM_BAR_FORMAT = (
@@ -880,6 +909,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+
+    custom_parameters = get_explicit_cli_parameters(parser, args, sys.argv[1:])
+
     pathToData = args.input
     sessions = args.sessions
     
@@ -1008,6 +1040,6 @@ if __name__ == "__main__":
                         # strings or unexpected types
                         print(f"Error: {err}")
 
-    create_qc_reports(pathToData, steps)
+    create_qc_reports(pathToData, steps, custom_parameters=custom_parameters)
 
  

@@ -194,7 +194,13 @@ def _plot_registration_overlay(bet_path, anno_path, out_dir, project_dir, n_slic
     return png_path, shape, anno_shape, zooms
 
 
-def _write_report(entries, out_dir, title, report_name):
+def _format_parameter_value(value):
+    if isinstance(value, (list, tuple)):
+        return " ".join(str(item) for item in value)
+    return str(value)
+
+
+def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
     html_path = Path(out_dir) / report_name
     subjects = sorted({entry["subject"] for entry in entries})
     sessions = sorted({entry["session"] for entry in entries})
@@ -206,6 +212,11 @@ def _write_report(entries, out_dir, title, report_name):
             """
             <style>
             body { font-family: Arial, sans-serif; margin: 40px; }
+            .custom-parameters { background: #f3f6f8; border: 1px solid #ccd5db; border-radius: 4px; margin-bottom: 24px; padding: 16px 20px; }
+            .custom-parameters h2 { margin: 0 0 12px; }
+            .custom-parameters table { border-collapse: collapse; }
+            .custom-parameters th { padding: 3px 24px 3px 0; text-align: left; vertical-align: top; }
+            .custom-parameters td { padding: 3px 0; }
             .report-entry { margin-bottom: 40px; }
             .report-info { font-size: 1.0em; margin-bottom: 8px; line-height: 1.5; }
             .report-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
@@ -244,6 +255,17 @@ def _write_report(entries, out_dir, title, report_name):
                 f.write(f"<option value='{escaped_value}'>{escaped_value}</option>")
             f.write("</select></label>\n")
         f.write("</div><div style='height:60px;'></div>\n")
+        if custom_parameters:
+            f.write("<section class='custom-parameters'>\n")
+            f.write("<h2>Custom parameters</h2>\n<table>\n")
+            for name, value in custom_parameters:
+                f.write(
+                    "<tr>"
+                    f"<th>{html.escape(str(name))}</th>"
+                    f"<td>{html.escape(_format_parameter_value(value))}</td>"
+                    "</tr>\n"
+                )
+            f.write("</table>\n</section>\n")
         f.write(f"<h1>{html.escape(title)}</h1>\n")
 
         for entry in entries:
@@ -266,7 +288,7 @@ def _write_report(entries, out_dir, title, report_name):
     return html_path
 
 
-def build_bet_qc_report(project_dir, n_slices=10):
+def build_bet_qc_report(project_dir, n_slices=10, custom_parameters=None):
     project_dir = Path(project_dir)
     out_dir = project_dir / "Report" / "BET"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -301,11 +323,17 @@ def build_bet_qc_report(project_dir, n_slices=10):
 
     if not entries:
         return None, 0
-    html_path = _write_report(entries, out_dir, "BET Report", "bet_report.html")
+    html_path = _write_report(
+        entries,
+        out_dir,
+        "BET Report",
+        "bet_report.html",
+        custom_parameters=custom_parameters,
+    )
     return html_path, len(entries)
 
 
-def build_registration_qc_report(project_dir, n_slices=10):
+def build_registration_qc_report(project_dir, n_slices=10, custom_parameters=None):
     project_dir = Path(project_dir)
     out_dir = project_dir / "Report" / "Registration"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -353,5 +381,6 @@ def build_registration_qc_report(project_dir, n_slices=10):
         out_dir,
         "Registration Report: BET + AnnoSplit_parental",
         "registration_report.html",
+        custom_parameters=custom_parameters,
     )
     return html_path, len(entries)
