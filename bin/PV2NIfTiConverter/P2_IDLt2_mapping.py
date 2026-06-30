@@ -147,7 +147,7 @@ def t2_fitmonoexp2(slice,te,snrMap,snrLim, model,uplim):
 def t2_mapping(data,echoTime, model, uplim, snrLim, SNRMethod):
 
 
-    imgData = np.asanyarray(data.dataobj)
+    imgData = data.get_fdata(dtype=np.float32)
 
 
     nx = imgData.shape[0] # Images size in x - direction
@@ -339,4 +339,3 @@ def getT2mapping(path,model,upLim,snrLim,SNRMethod,echoTime,output_path):
     hdr = mapNii.header
     hdr.set_xyzt_units('mm')
     nii.save(mapNii, output_path)
-

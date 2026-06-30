@@ -1,11 +1,47 @@
 import os
 import argparse
+from pathlib import Path
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
+import matplotlib
+
+matplotlib.use("Agg")
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
 
+def _display_geometry(img_slice, orientation, zooms):
+    if orientation == "Axial":
+        row_spacing, col_spacing = zooms[1], zooms[0]
+    elif orientation == "Sagittal":
+        row_spacing, col_spacing = zooms[2], zooms[1]
+    else:
+        row_spacing, col_spacing = zooms[2], zooms[0]
+
+    rows, cols = img_slice.shape
+    extent = (0, cols * col_spacing, 0, rows * row_spacing)
+    return extent
+
+def _display_limits(data):
+    finite = data[np.isfinite(data)]
+    nonzero = finite[finite != 0]
+    values = nonzero if nonzero.size else finite
+    if values.size == 0:
+        return 0, 1
+    low, high = np.percentile(values, [1, 99])
+    if low == high:
+        high = low + 1
+    return low, high
+
+def _voxel_size(img):
+    return tuple(round(float(z), 4) for z in img.header.get_zooms()[:3])
+
 def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     img = nib.load(nifti_path)
+    zooms = img.header.get_zooms()[:3]
     # Attempt to load data, if end of file error occurs, skip this file and create a placeholder image
     try:
         data = img.get_fdata()
@@ -44,6 +80,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     # If data is 4D, use the first volume
     if data.ndim == 4:
         data = data[..., 0]
+    vmin, vmax = _display_limits(data)
     for i, (ori, slcs) in enumerate(zip(orientations, slices)):
         ax1, ax2, _ = view_axes[i]
         # axis_codes gives the positive direction for each axis; get negative direction by swapping L<->R, A<->P, S<->I
@@ -61,8 +98,17 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
             else:  # Coronal
                 img_slice = data[:, sl, :]
             # Ensure img_slice is 2D
-            img_slice = np.squeeze(img_slice)
-            axes[i, j].imshow(np.rot90(img_slice), cmap='gray')
+            img_slice = np.rot90(np.squeeze(img_slice))
+            extent = _display_geometry(img_slice, ori, zooms)
+            axes[i, j].imshow(
+                img_slice,
+                cmap='gray',
+                vmin=vmin,
+                vmax=vmax,
+                extent=extent,
+                origin='lower',
+                aspect='equal'
+            )
             axes[i, j].set_title(f"{ori} slice {sl}", fontsize=12)
             axes[i, j].axis('off')
             # Add orientation labels from axis_codes
@@ -98,11 +144,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                     img = nib.load(nifti_path)
                     shape = img.shape
                     n_vols = shape[3] if (modality in ['dwi', 'func'] and len(shape) > 3) else 1
+                    voxel_size = _voxel_size(img)
                     report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                     report_entries.append({
                         'filename': fname,
                         'modality': modality,
                         'dimensions': shape,
+                        'voxel_size': voxel_size,
                         'n_volumes': n_vols,
                         'report_img_path': os.path.basename(report_img_path)
                     })
@@ -118,11 +166,13 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                                     img = nib.load(nifti_path)
                                     shape = img.shape
                                     n_vols = shape[3] if (modality in ['dwi'] and len(shape) > 3) else 1
+                                    voxel_size = _voxel_size(img)
                                     report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                                     report_entries.append({
                                     'filename': fname,
                                     'modality': modality,
                                     'dimensions': shape,
+                                    'voxel_size': voxel_size,
                                     'n_volumes': n_vols,
                                     'report_img_path': os.path.basename(report_img_path)
                                 })
@@ -142,9 +192,9 @@ def write_html_report(report_entries, out_dir):
             subject_id = parts[0].replace('sub-', '')
             session_id = parts[1].replace('ses-', '')
     # Compose report file name and title
-    report_fname = f"sub-{subject_id}_ses-{session_id}_report.html"
+    report_fname = "Convert2Nifti_Report.html"
     html_path = os.path.join(out_dir, report_fname)
-    report_title = f"NIfTI Report for {subject_id} {session_id}"
+    report_title = "Convert2Nifti_Report"
     subjects = sorted(set(
         entry['filename'].split('_')[0].replace('sub-', '') for entry in report_entries
     ))
@@ -223,6 +273,7 @@ def write_html_report(report_entries, out_dir):
                 f"<div class='report-info'><b>File Name:</b> {entry['filename']} &nbsp; "
                 f"<b>Modality:</b> {entry['modality']} &nbsp; "
                 f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
+                f"<b>Voxel size:</b> {entry['voxel_size']} &nbsp; "
                 f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
             )
             f.write(f"<img class='report-img' src='{entry['report_img_path']}' alt='{entry['filename']}'>\n")

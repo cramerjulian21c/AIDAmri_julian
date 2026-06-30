@@ -12,6 +12,7 @@ This release note summarizes the major changes introduced in AIDAmri v3.0.
 - Added stricter LIP orientation and NIfTI header checks to catch incompatible input data earlier.
 - Improved incidence map and stroke mask analysis, including session-specific incidence maps, CSV affected-region summaries, and labelled lesion masks.
 - Expanded `batchProc.py` with new options for T2, DWI, BET, CPU usage, and DSI Studio processing.
+- Added automatic HTML reports for NIfTI conversion, BET results, and atlas registration results.
 - Added a new AIDAmri v3.0 Markdown manual and updated documentation figures.
 
 ## Docker and Dependencies
@@ -32,6 +33,8 @@ This release note summarizes the major changes introduced in AIDAmri v3.0.
 - Added options to skip bias correction or BET where supported.
 - Added `bet4animal` support for animal brain extraction.
 - Added user-adjustable BET parameters: horizontal gradient and center coordinates.
+- Added optional ANTs bias-field correction and extended BET selection and parameter handling for fMRI preprocessing.
+- Added selectable MICO bias-field correction and extended BET options for T2 map preprocessing, including `skip`, FSL BET, and `bet4animal`.
 
 ## DWI and DSI Studio
 
@@ -70,13 +73,16 @@ This release note summarizes the major changes introduced in AIDAmri v3.0.
 - Improved T2 value extraction output naming.
 - Improved error handling when atlas or acronym files are missing.
 - Renamed T2 value CSV headers to clarify that values are mean T2 values.
+- Added fMRI preprocessing options for ANTs bias-field correction, skipping bias correction, selecting the BET implementation, and configuring BET parameters.
+- Added T2 map preprocessing options for selecting or skipping MICO bias-field correction, selecting the BET implementation, and configuring BET parameters.
 - Improved NIfTI compatibility in ROI, fMRI activity, and DTI data extraction scripts.
 
 ## Conversion and Helper Tools
 
 - Updated `conv2Nifti_auto.py` so the default `proc_data` directory is created next to the raw data folder.
-- Added automatic bval/bvec adjustment during conversion.
 - Added automatic `.bval`/`.bvec` adjustment during conversion.
+- Added automatic per-session NIfTI overview images and a `Convert2Nifti_Report.html` report under `Report/Convert2Nifti` during `conv2Nifti_auto.py` conversion.
+- Added automatic BET and registration HTML reports under `Report/BET` and `Report/Registration` after the corresponding batch-processing steps.
 - Added `plot_sourcedata_niftis.py` for source data QC mosaics.
 - Added `crop_T2.py` for cropping T2-weighted images before preprocessing.
 - Added `fieldmap_json_edit.py` for editing BIDS `IntendedFor` fields.
@@ -91,6 +97,7 @@ This release note summarizes the major changes introduced in AIDAmri v3.0.
 - Incidence map generation now requires an explicit `--session`.
 - Some output file and folder names changed, especially for DSI connectivity, incidence maps, affected regions, and T2 value extraction.
 - Preprocessing now performs stricter LIP orientation and NIfTI header checks.
+
 ## Documentation and Figures
 
 - Added a new Markdown manual for AIDAmri v3.0.
