@@ -156,7 +156,7 @@ the main content layers. The boxes preceded with an $ are command line codes.
 Click on texts within the boxes for further information.</em>
 </p>
 
-The container follows a basic Ubuntu 18.04 system, meaning that the root directory is called `/`. To share a volume between the host system and the container, bind mounts are commonly used. See [Running container and mounting data](#running-container-and-mounting-data) for further information.
+The container is based on Ubuntu 22.04, and its root directory is called `/`. To share a volume between the host system and the container, bind mounts are commonly used. See [Running container and mounting data](#running-container-and-mounting-data) for further information.
 
 When referring to the mounted volume while in the container, use the path given at mounting, for example `/<MOUNTED DIRECTORY>`. This path will likely be different on your host system.
 
@@ -326,12 +326,15 @@ AIDAmri provides functions for data conversion and batch processing. Complete pr
 2. `batchProc.py` applies preprocessing steps and registration with the atlas.
 
 > [!NOTE]
-> If multiple reconstructions exist, conversion will only use the first folder correctly. The test data set is already converted into NIfTI format (see nifti folder), so only the second script needs to be applied.
+> If a Bruker scan contains multiple reconstruction folders, verify the converted output carefully because the converter may select only one reconstruction. The test dataset is already converted into NIfTI format (see the `nifti` folder), so only the second script needs to be applied.
 
-In general, raw Bruker data must be in the following structure for the first script to work:
+For batch conversion, place all raw Bruker subject datasets directly in one input directory without an additional nested folder structure:
 
 ```text
-projectfolder/days/subjects/
+raw_data/
+├── subject_dataset_1/
+├── subject_dataset_2/
+└── subject_dataset_3/
 ```
 
 To convert the whole project folder into NIfTI format, open the terminal and change the directory to the `/bin` folder of the AIDAmri installation:
@@ -353,7 +356,7 @@ This script automatically finds all raw Bruker datasets saved within the input p
 ```
 
 > [!NOTE]
-> If any generated folder or file names contain an 'underscore', please run the `reset_naming.py` script located in the `helper_tools` directory.
+> If conversion produces incorrect subject or study names because the corresponding values in the Bruker `subject` metadata contain an unwanted underscore, run `helper_tools/reset_naming.py` on the raw-data directory before converting again. Do not run it merely because generated BIDS names contain underscores; underscores are a normal part of BIDS file names. The script edits Bruker `subject` files in place, removing the first underscore from `##$SUBJECT_id=` and `##$SUBJECT_study_name=` values and mapping study names beginning with `baseline` to `PT0`.
 
 After successful Bruker to NIfTI conversion, the second script can be applied to the new project folder `proc_data`. The data need to be ordered in BIDS format like the output of `conv2Nifti_auto.py`:
 
@@ -398,16 +401,19 @@ Every script has arguments that can be specified when calling the script. For mo
 Convert Bruker raw data to NIfTI files by specifying the folder containing all raw folders of each scan.
 
 > [!NOTE]
-> If multiple reconstructions exist, conversion will only use the first folder correctly. A file with exactly the same name is created in the given input folder. It contains all sorted NIfTI files. The raw data should have the same orientation as the example dataset.
+> If a Bruker scan contains multiple reconstruction folders, verify the converted output carefully because the converter may select only one reconstruction. The raw data should have the same orientation as the example dataset.
 
 ```text
 python pv_conv2Nifti.py -i /aida/DATA/raw_data_folder
 ```
 
-Move the newly generated file to a new project folder if you want to separate raw Bruker files from processed NIfTI files. We recommend the following folder structure, especially if you want to use AIDAconnect for graph analysis:
+For complete projects, prefer `conv2Nifti_auto.py`, which creates BIDS-like output suitable for subsequent batch processing. Its input directory must contain the raw Bruker subject datasets directly, without intermediate day or group directories:
 
 ```text
-projectfolder/days/groups/subjects/data/
+raw_data/
+├── subject_dataset_1/
+├── subject_dataset_2/
+└── subject_dataset_3/
 ```
 
 <h3 id="preprocessing-of-anatomical-data">Preprocessing of anatomical data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
