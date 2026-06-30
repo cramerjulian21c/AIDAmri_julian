@@ -263,9 +263,22 @@ Available functions:
 ```python
 from batch_qc_reports import build_bet_qc_report, build_registration_qc_report
 
-build_bet_qc_report("/path/to/proc_data", n_slices=10)
-build_registration_qc_report("/path/to/proc_data", n_slices=10)
+build_bet_qc_report(
+    "/path/to/proc_data",
+    n_slices=10,
+    custom_parameters=[("--t2-frac", 0.1)],
+)
+build_registration_qc_report(
+    "/path/to/proc_data",
+    n_slices=10,
+    custom_parameters=[("--t2-frac", 0.1)],
+)
 ```
+
+When reports are created by `batchProc.py`, options explicitly supplied on the
+command line are listed in a **Custom parameters** section at the top of each
+HTML report. The required `--input` option is omitted. Direct callers can pass
+the optional `custom_parameters` sequence shown above.
 
 BET report behavior:
 
