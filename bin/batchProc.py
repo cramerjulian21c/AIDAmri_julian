@@ -129,6 +129,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
             # captures stdout/stderr into the step-specific batch log.
             if any(arg.endswith("dsi_main.py") for arg in command_args):
                 child_env["AIDAMRI_DISABLE_PROCESS_LOG"] = "1"
+            child_env["AIDAMRI_DISABLE_SPINNER"] = "1"
             result = subprocess.run(
                 command_args,
                 stdout=outfile,
@@ -489,35 +490,39 @@ def create_qc_reports(project_path, steps):
             build_registration_qc_report,
         )
     except Exception as exc:
-        logging.warning("Could not import batch QC report tools: %s", exc)
-        print(f"QC report generation skipped: {exc}")
+        logging.warning("Could not import batch report tools: %s", exc)
+        print(f"Report generation skipped: {exc}")
         return
 
     if "preprocess" in requested_steps:
         try:
-            html_path, count = build_bet_qc_report(project_path, n_slices=10)
+            print("Creating BET report...")
+            logging.info("Creating BET report...")
+            html_path, count = build_bet_qc_report(project_path, n_slices=7)
             if html_path:
-                print(f"BET QC report written to {html_path} ({count} image(s))")
-                logging.info("BET QC report written to %s (%s images)", html_path, count)
+                print(f"BET report written to {html_path} ({count} image(s))")
+                logging.info("BET report written to %s (%s images)", html_path, count)
             else:
-                print("BET QC report skipped: no BET files found.")
-                logging.info("BET QC report skipped: no BET files found.")
+                print("BET report skipped: no BET files found.")
+                logging.info("BET report skipped: no BET files found.")
         except Exception as exc:
-            logging.warning("BET QC report generation failed: %s", exc)
-            print(f"BET QC report generation failed: {exc}")
+            logging.warning("BET report generation failed: %s", exc)
+            print(f"BET report generation failed: {exc}")
 
     if "registration" in requested_steps:
         try:
+            print("Creating Registration report...")
+            logging.info("Creating Registration report...")
             html_path, count = build_registration_qc_report(project_path, n_slices=7)
             if html_path:
-                print(f"Registration QC report written to {html_path} ({count} image(s))")
-                logging.info("Registration QC report written to %s (%s images)", html_path, count)
+                print(f"Registration report written to {html_path} ({count} image(s))")
+                logging.info("Registration report written to %s (%s images)", html_path, count)
             else:
-                print("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
-                logging.info("Registration QC report skipped: no BET/AnnoSplit_parental pairs found.")
+                print("Registration report skipped: no BET/AnnoSplit_parental pairs found.")
+                logging.info("Registration report skipped: no BET/AnnoSplit_parental pairs found.")
         except Exception as exc:
-            logging.warning("Registration QC report generation failed: %s", exc)
-            print(f"Registration QC report generation failed: {exc}")
+            logging.warning("Registration report generation failed: %s", exc)
+            print(f"Registration report generation failed: {exc}")
 
 
 def format_step_label(step):
@@ -568,6 +573,11 @@ if __name__ == "__main__":
             )
         if cores < 1:
             raise argparse.ArgumentTypeError("--cpu-cores must be at least 1")
+        cpu_count = multiprocessing.cpu_count()
+        if cores > cpu_count:
+            raise argparse.ArgumentTypeError(
+                f"--cpu-cores must not exceed the available CPU cores ({cpu_count})"
+            )
         return cores
 
     parser = argparse.ArgumentParser(

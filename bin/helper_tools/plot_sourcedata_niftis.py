@@ -1,22 +1,22 @@
 import os
 import argparse
-import nibabel as nib
-import numpy as np
+from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
-os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
 
 import matplotlib
 
 matplotlib.use("Agg")
+import nibabel as nib
+import numpy as np
 import matplotlib.pyplot as plt
 
-
 def _display_geometry(img_slice, orientation, zooms):
-    if orientation == 'Axial':
+    if orientation == "Axial":
         row_spacing, col_spacing = zooms[1], zooms[0]
-    elif orientation == 'Sagittal':
+    elif orientation == "Sagittal":
         row_spacing, col_spacing = zooms[2], zooms[1]
     else:
         row_spacing, col_spacing = zooms[2], zooms[0]
@@ -24,6 +24,20 @@ def _display_geometry(img_slice, orientation, zooms):
     rows, cols = img_slice.shape
     extent = (0, cols * col_spacing, 0, rows * row_spacing)
     return extent
+
+def _display_limits(data):
+    finite = data[np.isfinite(data)]
+    nonzero = finite[finite != 0]
+    values = nonzero if nonzero.size else finite
+    if values.size == 0:
+        return 0, 1
+    low, high = np.percentile(values, [1, 99])
+    if low == high:
+        high = low + 1
+    return low, high
+
+def _voxel_size(img):
+    return tuple(round(float(z), 4) for z in img.header.get_zooms()[:3])
 
 def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     img = nib.load(nifti_path)
@@ -38,7 +52,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
         plt.imshow(data[:, :, 0], cmap='gray')  # Show a single slice
         plt.title(f"Placeholder for {os.path.basename(nifti_path)}")
         plt.axis('off')
-        out_path = os.path.join(out_dir, os.path.basename(nifti_path).replace('.nii', '').replace('.gz', '') + '_qc.png')
+        out_path = os.path.join(out_dir, os.path.basename(nifti_path).replace('.nii', '').replace('.gz', '') + '_report.png')
         plt.savefig(out_path)
         plt.close()
         return out_path
@@ -66,6 +80,7 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
     # If data is 4D, use the first volume
     if data.ndim == 4:
         data = data[..., 0]
+    vmin, vmax = _display_limits(data)
     for i, (ori, slcs) in enumerate(zip(orientations, slices)):
         ax1, ax2, _ = view_axes[i]
         # axis_codes gives the positive direction for each axis; get negative direction by swapping L<->R, A<->P, S<->I
@@ -83,12 +98,13 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
             else:  # Coronal
                 img_slice = data[:, sl, :]
             # Ensure img_slice is 2D
-            img_slice = np.squeeze(img_slice)
-            img_slice = np.rot90(img_slice)
+            img_slice = np.rot90(np.squeeze(img_slice))
             extent = _display_geometry(img_slice, ori, zooms)
             axes[i, j].imshow(
                 img_slice,
                 cmap='gray',
+                vmin=vmin,
+                vmax=vmax,
                 extent=extent,
                 origin='lower',
                 aspect='equal'
@@ -104,10 +120,10 @@ def plot_nifti_slices(nifti_path, out_dir, n_slices=10):
                                 va='top', ha='center', fontsize=12, color='lime')
             axes[i, j].annotate(bottom, xy=(0.5, 0), xycoords='axes fraction',
                                 va='bottom', ha='center', fontsize=12, color='lime')
-    plt.suptitle(f"QC Slices: {fname}", fontsize=16)
+    plt.suptitle(f"Slices: {fname}", fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, fname.replace('.nii', '').replace('.gz', '') + '_qc.png')
+    out_path = os.path.join(out_dir, fname.replace('.nii', '').replace('.gz', '') + '_report.png')
     plt.savefig(out_path)
     plt.close(fig)
     return out_path
@@ -127,16 +143,16 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                     nifti_path = os.path.join(modality_dir, fname)
                     img = nib.load(nifti_path)
                     shape = img.shape
-                    voxel_size = img.header.get_zooms()[:3]
                     n_vols = shape[3] if (modality in ['dwi', 'func'] and len(shape) > 3) else 1
-                    qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
+                    voxel_size = _voxel_size(img)
+                    report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                     report_entries.append({
                         'filename': fname,
                         'modality': modality,
                         'dimensions': shape,
                         'voxel_size': voxel_size,
                         'n_volumes': n_vols,
-                        'qc_img_path': os.path.basename(qc_img_path)
+                        'report_img_path': os.path.basename(report_img_path)
                     })
             if modality == 'dwi':
                 # Plot niftis in subfolders
@@ -149,16 +165,16 @@ def process_subject(subject_dir, out_dir, n_slices=10):
                                     nifti_path = os.path.join(subfolder_path, fname)
                                     img = nib.load(nifti_path)
                                     shape = img.shape
-                                    voxel_size = img.header.get_zooms()[:3]
                                     n_vols = shape[3] if (modality in ['dwi'] and len(shape) > 3) else 1
-                                    qc_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
+                                    voxel_size = _voxel_size(img)
+                                    report_img_path = plot_nifti_slices(nifti_path, out_dir, n_slices)
                                     report_entries.append({
                                     'filename': fname,
                                     'modality': modality,
                                     'dimensions': shape,
                                     'voxel_size': voxel_size,
                                     'n_volumes': n_vols,
-                                    'qc_img_path': os.path.basename(qc_img_path)
+                                    'report_img_path': os.path.basename(report_img_path)
                                 })
                                 except Exception as e:
                                     print(f"Error processing {nifti_path}: {e}")
@@ -176,52 +192,32 @@ def write_html_report(report_entries, out_dir):
             subject_id = parts[0].replace('sub-', '')
             session_id = parts[1].replace('ses-', '')
     # Compose report file name and title
-    report_fname = f"sub-{subject_id}_ses-{session_id}_qc_report.html"
+    report_fname = "Convert2Nifti_Report.html"
     html_path = os.path.join(out_dir, report_fname)
-    report_title = f"Bruker to NIfTI QC Report"
+    report_title = "Convert2Nifti_Report"
+    subjects = sorted(set(
+        entry['filename'].split('_')[0].replace('sub-', '') for entry in report_entries
+    ))
+    sessions = sorted(set(
+        entry['filename'].split('_')[1].replace('ses-', '') for entry in report_entries
+    ))
+    modalities = sorted(set(entry['modality'] for entry in report_entries))
+
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{report_title}</title>\n")
         f.write("""
         <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
-        .qc-entry { margin-bottom: 40px; }
-        .qc-info { font-size: 1.1em; margin-bottom: 8px; }
-        .qc-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
+        .report-entry { margin-bottom: 40px; }
+        .report-info { font-size: 1.1em; margin-bottom: 8px; }
+        .report-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
         </style>
-        """)
-        f.write("</head><body>\n")
-        f.write(f"<h1>{report_title}</h1>\n")
-        for entry in report_entries:
-            # Extract subject and session from filename
-            parts = entry['filename'].split('_')
-            subj = parts[0].replace('sub-', '') if len(parts) > 0 else "unknown"
-            sess = parts[1].replace('ses-', '') if len(parts) > 1 else "unknown"
-            f.write(f"<div class='qc-entry' data-subject='{subj}' data-session='{sess}' data-modality='{entry['modality']}'>\n")
-            f.write(
-                f"<div class='qc-info'><b>File Name:</b> {entry['filename']} &nbsp; "
-                f"<b>Modality:</b> {entry['modality']} &nbsp; "
-                f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
-                f"<b>Voxel Size:</b> {tuple(round(float(z), 4) for z in entry.get('voxel_size', ()))} &nbsp; "
-                f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
-            )
-            f.write(f"<img class='qc-img' src='{entry['qc_img_path']}' alt='{entry['filename']}'>\n")
-            f.write("</div>\n")
-        # Build dropdown menu for navigation
-        subjects = sorted(set(
-            entry['filename'].split('_')[0].replace('sub-', '') for entry in report_entries
-        ))
-        sessions = sorted(set(
-            entry['filename'].split('_')[1].replace('ses-', '') for entry in report_entries
-        ))
-        modalities = sorted(set(entry['modality'] for entry in report_entries))
-        # Create dropdown HTML
-        f.write("""
         <script>
-        function filterQC() {
+        function filterreport() {
             var subj = document.getElementById('subjectDropdown').value;
             var sess = document.getElementById('sessionDropdown').value;
             var mod = document.getElementById('modalityDropdown').value;
-            var entries = document.getElementsByClassName('qc-entry');
+            var entries = document.getElementsByClassName('report-entry');
             for (var i = 0; i < entries.length; i++) {
                 var entry = entries[i];
                 var show = true;
@@ -232,9 +228,12 @@ def write_html_report(report_entries, out_dir):
             }
         }
         </script>
-        <div id='qc-dropdown-bar' style='position:fixed;top:0;left:0;width:100%;background:#f9f9f9;border-bottom:1px solid #ccc;z-index:1000;padding:12px 0;'>
+        """)
+        f.write("</head><body>\n")
+        f.write("""
+        <div id='report-dropdown-bar' style='position:fixed;top:0;left:0;width:100%;background:#f9f9f9;border-bottom:1px solid #ccc;z-index:1000;padding:12px 0;'>
             <label style='margin-right:20px;'>Subject:
-            <select id='subjectDropdown' onchange='filterQC()'>
+            <select id='subjectDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for s in subjects:
@@ -243,7 +242,7 @@ def write_html_report(report_entries, out_dir):
             </select>
             </label>
             <label style='margin-right:20px;'>Session:
-            <select id='sessionDropdown' onchange='filterQC()'>
+            <select id='sessionDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for s in sessions:
@@ -252,7 +251,7 @@ def write_html_report(report_entries, out_dir):
             </select>
             </label>
             <label style='margin-right:20px;'>Modality:
-            <select id='modalityDropdown' onchange='filterQC()'>
+            <select id='modalityDropdown' onchange='filterreport()'>
                 <option value='all'>All</option>
         """)
         for m in modalities:
@@ -263,13 +262,29 @@ def write_html_report(report_entries, out_dir):
         </div>
         <div style='height:60px;'></div>
         """)
+        f.write(f"<h1>{report_title}</h1>\n")
+        for entry in report_entries:
+            # Extract subject and session from filename
+            parts = entry['filename'].split('_')
+            subj = parts[0].replace('sub-', '') if len(parts) > 0 else "unknown"
+            sess = parts[1].replace('ses-', '') if len(parts) > 1 else "unknown"
+            f.write(f"<div class='report-entry' data-subject='{subj}' data-session='{sess}' data-modality='{entry['modality']}'>\n")
+            f.write(
+                f"<div class='report-info'><b>File Name:</b> {entry['filename']} &nbsp; "
+                f"<b>Modality:</b> {entry['modality']} &nbsp; "
+                f"<b>Dimensions:</b> {entry['dimensions']} &nbsp; "
+                f"<b>Voxel size:</b> {entry['voxel_size']} &nbsp; "
+                f"<b># Volumes:</b> {entry['n_volumes']}</div>\n"
+            )
+            f.write(f"<img class='report-img' src='{entry['report_img_path']}' alt='{entry['filename']}'>\n")
+            f.write("</div>\n")
         f.write("</body></html>\n")
     print(f"HTML report written to {html_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Create QC plots and HTML report for NIfTI files of a subject.")
+    parser = argparse.ArgumentParser(description="Create plots and HTML report for NIfTI files of a subject.")
     parser.add_argument("subject_dir", help="Path to sub-<subject_id>/ses-<session_id>/ directory")
-    parser.add_argument("out_dir", help="Directory to save QC plots and HTML report")
+    parser.add_argument("out_dir", help="Directory to save plots and HTML report")
     parser.add_argument("--n_slices", type=int, default=10, help="Number of slices per orientation")
     args = parser.parse_args()
     report_entries = process_subject(args.subject_dir, args.out_dir, args.n_slices)

@@ -355,7 +355,9 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     
         # load nifti image and save the array in a dict while key is the slice number
         data = nii.load(m_d_p)
-        img_array = data.dataobj.get_unscaled()
+        # Use scaled intensities; converted NIfTIs may store int16 data with
+        # scl_slope/scl_inter, and get_unscaled() would discard that scaling.
+        img_array = data.get_fdata(dtype=np.float32)
         img_array_data[slice_number] = img_array
 
         # remove single mese file
@@ -407,7 +409,7 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
 
     # generate transposed MEMS img for later registration
     org_mems_scan = nii.load(t2_mems_path)
-    mems_data = org_mems_scan.dataobj.get_unscaled()
+    mems_data = org_mems_scan.get_fdata(dtype=np.float32)
     
     mems_data_transposed = np.transpose(mems_data, axes=(0,1,3,2))
     mems_data_first_slice = mems_data_transposed[:,:,:,1]
@@ -415,7 +417,10 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
     for i in range(mems_data_transposed.shape[3]):
         mems_data_transposed[:,:,:,i] = mems_data_first_slice
         
-    transposed_copied_img = nii.Nifti1Image(mems_data_transposed, org_mems_scan.affine)
+    transposed_copied_img = nii.Nifti1Image(
+        mems_data_transposed.astype(np.float32),
+        org_mems_scan.affine,
+    )
     
     img_name = sub + "_" + ses + "_T2w_transposed_MEMS.nii.gz"
     t2_mems_transposed_path = os.path.join(output_dir, sub, ses, "t2map", img_name)
@@ -435,22 +440,26 @@ def create_mems_and_map(mese_scan_ses, mese_scan_data, output_dir):
 def correct_orientation(qform,sform, t2_mems_img, t2_map_img):
     # overwrite img with correct orienation
     mems_img = nii.load(t2_mems_img)
-    imgTemp = mems_img.dataobj.get_unscaled()
+    imgTemp = mems_img.get_fdata(dtype=np.float32)
 
-    mems_img.header.set_qform(qform)
-    mems_img.header.set_sform(sform)
+    mems_header = mems_img.header.copy()
+    mems_header.set_data_dtype(np.float32)
+    mems_header.set_qform(qform)
+    mems_header.set_sform(sform)
 
-    new_img = nii.Nifti1Image(imgTemp, None, mems_img.header)
+    new_img = nii.Nifti1Image(imgTemp, None, mems_header)
     nii.save(new_img, t2_mems_img)
 
     # overwrite img with correct orienation
     map_img = nii.load(t2_map_img)
-    imgTemp = map_img.dataobj.get_unscaled()
+    imgTemp = map_img.get_fdata(dtype=np.float32)
 
-    map_img.header.set_qform(qform)
-    map_img.header.set_sform(sform)
+    map_header = map_img.header.copy()
+    map_header.set_data_dtype(np.float32)
+    map_header.set_qform(qform)
+    map_header.set_sform(sform)
 
-    new_img = nii.Nifti1Image(imgTemp, None, map_img.header)
+    new_img = nii.Nifti1Image(imgTemp, None, map_header)
     nii.save(new_img, t2_map_img)
 
 
@@ -694,21 +703,19 @@ if __name__ == "__main__":
         logging.warning("DWI post-processing issue details:\n%s", "\n".join(dwi_issue_details))
 
     # plot QC images for nifti files
-    print("Plotting QC images for nifti files \33[5m...\33[0m (wait!)")
-
-    qc_output_dir = os.path.join(output_dir, "QC", "Convert2Nifti")
-    os.makedirs(qc_output_dir, exist_ok=True)
+    print("Plotting Report images for nifti files \33[5m...\33[0m (wait!)")
+    report_output_dir = os.path.join(output_dir, "Report", "Convert2Nifti")
+    os.makedirs(report_output_dir, exist_ok=True)
     report_entries = []
     for subject_dir in glob.glob(os.path.join(output_dir, "sub-*")):
         subject_id = os.path.basename(subject_dir)
         print(f"Processing subject: {subject_id}")
-        report_entries.extend(process_subject(subject_dir, qc_output_dir, n_slices=10))
+        report_entries.extend(process_subject(subject_dir, report_output_dir, n_slices=10))
     if report_entries:
-        write_html_report(report_entries, qc_output_dir)
-        print(f"QC report written to {os.path.join(qc_output_dir, 'sub-*_ses-*_qc_report.html')}")
+        write_html_report(report_entries, report_output_dir)
     else:
-        print("No NIfTI files found for QC reporting.")
-        logging.warning("No NIfTI files found for QC reporting.")
+        print("No NIfTI files found for reporting.")
+        logging.warning("No NIfTI files found for reporting.")
 
     # find MEMS and fmri files 
     mese_scan_data = {}

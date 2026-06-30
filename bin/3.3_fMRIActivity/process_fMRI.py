@@ -55,13 +55,15 @@ def imgScaleResize(img):
 
 def scaleBy10(input_path,inv):
     img = nii.load(input_path)
-    imgTemp = np.asanyarray(img.dataobj).copy()
+    imgTemp = img.get_fdata(dtype=np.float32)
     aff = img.affine.copy()
 
     factor = 0.1 if inv else 10.0
     aff[:3, :3] *= factor
 
-    out_img = nii.Nifti1Image(imgTemp, aff, header=img.header)
+    hdr = img.header.copy()
+    hdr.set_data_dtype(np.float32)
+    out_img = nii.Nifti1Image(imgTemp, aff, header=hdr)
     out_img.header.set_xyzt_units('mm')
     out_img.set_qform(aff, code=1)
     out_img.set_sform(aff, code=1)
@@ -164,20 +166,32 @@ def copyRawPhysioData(file_name,i32_Path):
     json_file = os.path.join(os.path.dirname(file_name), json_name)
     sub_name = (Path(file_name).name.split("_")[0]).split("-")[1]
     studyName = (Path(os.path.dirname(os.path.dirname(file_name))).name).split("-")[1]
-    
-    relatedPhysioData = []
-    if os.path.exists(json_file):
-        with open(json_file, 'r') as infile:
-            content = json.load(infile)
-            scanid = str(content["ScanID"]) + ".I32"
+    physioPath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
+    scanid = None
 
-        physioPath=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
-        
-        conditions = [sub_name , studyName]
-        for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
-            filename = os.path.basename(file)
-            if all(condition in filename for condition in conditions):
-                relatedPhysioData.append(file)
+    relatedPhysioData = []
+    if not os.path.exists(json_file):
+        print("Error: '%s' has no metadata JSON file for physio lookup." % (file_name,))
+        return []
+
+    with open(json_file, 'r') as infile:
+        content = json.load(infile)
+
+    if "ScanID" not in content:
+        print("Error: '%s' has no ScanID in metadata JSON for physio lookup." % (json_file,))
+        return []
+
+    scanid = str(content["ScanID"]) + ".I32"
+
+    if not os.path.exists(physioPath):
+        print("Error: '%s' is not an existing Physio directory." % (physioPath,))
+        return []
+
+    conditions = [sub_name , studyName]
+    for file in glob.iglob(os.path.join(physioPath, "**", "*" + scanid), recursive=True):
+        filename = os.path.basename(file)
+        if all(condition in filename for condition in conditions):
+            relatedPhysioData.append(file)
 
     if len(relatedPhysioData)>1:
         sys.exit("Warning: '%s' has no unique physio data for scan %s." % (physioPath, scanid,))
