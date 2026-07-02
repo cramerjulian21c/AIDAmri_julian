@@ -103,6 +103,15 @@ If your problem is not listed here, please use our Gitter Chat or open an issue 
 
 
 ---
+<details>
+<summary><strong>Running Container Warning</strong></summary>
+ARM useres (e.g. Apple Silicon) will experience this warning during setting up the conatiner:
+
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+
+This warning appears because the container was set for a different architecture than your host system. 
+It can be ignored and does not affect the functionality of the container.
+</details>
 
 <details>
 <summary><strong>General debugging tips</strong></summary>

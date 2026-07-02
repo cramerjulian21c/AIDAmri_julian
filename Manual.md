@@ -214,9 +214,10 @@ To start an AIDAmri container and make your data available inside it, run:
 
 ```text
 docker run -dit \
-  --name aidamri_container \
-  --mount type=bind,source=PATH/TO/DATA,target=/aida/DATA \
-  aidamri:latest
+    --platform linux/amd64 \
+    --name aidamri_container \
+    --mount type=bind,source=PATH/TO/DATA,target=/aida/DATA \
+    aidamri:latest
 ```
 
 The command performs the following function:
