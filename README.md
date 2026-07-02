@@ -103,6 +103,15 @@ If your problem is not listed here, please use our Gitter Chat or open an issue 
 
 
 ---
+<details>
+<summary><strong>Running Container Warning</strong></summary>
+ARM useres (e.g. Apple Silicon) may see the following warning when starting the conatiner:
+
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+
+The warning appears because the image was built for the AMD64 architecture, while the host uses ARM64. Docker can run the image using emulation, although performance may be reduced.
+It can be ignored and does not affect the functionality of the container.
+</details>
 
 <details>
 <summary><strong>General debugging tips</strong></summary>
