@@ -149,7 +149,7 @@ def smoothIMG(input_file,outputPath):
     hdrOut.set_data_dtype(np.float32)
     set_default_xyzt_units_if_unknown(hdrOut)
     output_file = os.path.join(os.path.dirname(input_file),
-                               os.path.basename(input_file).split('.')[0] + 'DN.nii.gz')
+                               os.path.basename(input_file).split('.')[0] + 'MP.nii.gz')
     # hdrOut['sform_code'] = 1
     nib.save(unscaledNiiData, output_file)
     input_file = output_file
