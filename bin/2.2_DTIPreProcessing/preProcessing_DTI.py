@@ -370,7 +370,8 @@ if __name__ == "__main__":
     output_path = os.path.dirname(input_file)
     b0_thresh=100
 
-    print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
+    if args.bet == "bet":
+        print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
 
     creat_brkraw_backup(input_file)
     header_check(input_file)
