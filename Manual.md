@@ -224,6 +224,8 @@ The command performs the following function:
 `docker run` starts a new container from the AIDAmri Docker image.
 `-dit` starts the container in the background while keeping it interactive. This means the container keeps running, and you can enter it later.
 
+`--platform linux/amd64` explicitly selects the Linux AMD64 platform for which the image was built. This is particularly relevant on ARM-based hosts, such as Apple Silicon Macs or Windows-on-ARM devices, where Docker runs the image using AMD64 emulation. On standard Intel or AMD systems, this option is usually not required.
+
 `--name aidamri_container` gives the container a name. The container name is independent from the image name. In this example, the image is called `aidamri:latest`, while the container is called `aidamri_container`. If you wish to use more than one running container instance, for example to process multiple datasets simultaneously, each container needs a different name.
 
 `--mount type=bind,source=PATH/TO/DATA,target=/aida/DATA` connects a folder from your computer to a folder inside the container. This is called a bind mount. It allows AIDAmri to access and process your MRI data without copying it into the container.
