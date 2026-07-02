@@ -206,8 +206,9 @@ if __name__ == "__main__":
     horizontal_gradient = args.horizontal_gradient
     bias_method = args.bias_method
     output_path = os.path.dirname(input_file)
-    
-    print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
+
+    if args.bet == "bet":
+        print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
 
     create_brkraw_backup(input_file)
     header_check(input_file)
