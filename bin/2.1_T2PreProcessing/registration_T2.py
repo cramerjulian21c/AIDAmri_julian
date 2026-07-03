@@ -16,6 +16,9 @@ import glob
 import subprocess
 import shlex
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.script_logging import setup_script_logging
+
 def BET_2_MPIreg(inputVolume, stroke_mask,brain_template, allenBrain_template,allenBrain_anno,split_anno,anno_rsfMRI,split_allenBrain_annorsfMRI,outfile,opt):
     output = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_TemplateAff.nii.gz')
     outputCPPAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'MatrixAff.txt')
@@ -254,6 +257,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    setup_script_logging(outfile, "registration.log")
 
     stroke_mask = find_mask(inputVolume)
     if len(stroke_mask) == 0:
@@ -278,5 +282,4 @@ if __name__ == "__main__":
         #os.system('python adjust_orientation.py -i '+ str(img) + ' -t ' + currentFile[0])
         
     print("Registration completed")
-
 

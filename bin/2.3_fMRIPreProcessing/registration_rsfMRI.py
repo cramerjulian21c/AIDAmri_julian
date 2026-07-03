@@ -14,6 +14,9 @@ import shutil as sh
 import subprocess
 import shlex
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.script_logging import setup_script_logging
+
 
 def regABA2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
                   bsplineMatrix, dref, outfile):
@@ -196,6 +199,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    setup_script_logging(outfile, "registration.log")
 
 
     # find related  data
@@ -279,4 +283,3 @@ if __name__ == "__main__":
         #os.system('python adjust_orientation.py -i '+ str(img) + ' -t ' + currentFile[0])
 
     print("Registration done")
-
