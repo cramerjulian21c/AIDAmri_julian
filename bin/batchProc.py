@@ -124,6 +124,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
         with open(log_file, 'w') as outfile:
             time.sleep(2) # make sure logging file is created before starting the subprocess
             child_env = os.environ.copy()
+            child_env["AIDAMRI_DISABLE_SCRIPT_LOG"] = "1"
             # dsi_main.py can create its own process.log during interactive
             # runs. Disable that side log here because batchProc.py already
             # captures stdout/stderr into the step-specific batch log.
