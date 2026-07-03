@@ -272,6 +272,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
+                    if cfg.get("func_atlas_mask_t2"):
+                        command += " --atlas-mask-t2"
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -812,6 +814,11 @@ if __name__ == "__main__":
         type=float,
         metavar=("X", "Y", "Z"),
         help="BET center in voxel coordinates for fMRI"
+    )
+    func.add_argument(
+        "--func-atlas-mask-t2",
+        action="store_true",
+        help="Mask the T2 BET with the T2 registered atlas annotation before fMRI registration"
     )
 
     # ============================================================
