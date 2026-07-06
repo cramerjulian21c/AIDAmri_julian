@@ -39,6 +39,18 @@ def require_single_match(matches, description):
         )
     return matches[0]
 
+# Parameters passed to regSIG2rsfMRI:
+# inputVolume: Preprocessed rsfMRI reference image and final target space.
+# T2data: Individual brain-extracted T2 image (*/anat/*Bet.nii.gz).
+# brain_template: SIGMA intensity template already warped into T2 space.
+# brain_anno: SIGMA label image already warped into T2 space.
+# splitAnno: Detailed label atlas in the original SIGMA space.
+# splitAnno_rsfMRI: Parental split-label atlas in the original SIGMA space.
+# anno_rsfMRI: Parental label atlas in the original SIGMA space.
+# bsplineMatrix: Existing non-linear SIGMA-to-T2 transformation.
+# dref: If True, use existing results from the related DWI directory.
+# outfile: Directory for registered images, matrix and log file.
+# use_atlas_mask: If True, mask T2data with a dilated brain_anno mask.
 
 def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
                   bsplineMatrix, dref, outfile, use_atlas_mask=False):
@@ -49,7 +61,6 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         pathT2 = glob.glob(os.path.dirname(outfile) + '*/dwi/*T2w.nii.gz', recursive=False)
         sh.copy(require_single_match(pathT2, "DTI T2 image"), outputT2w)
     else:
-        registrationT2 = T2data
         if use_atlas_mask:
             prefix = os.path.basename(inputVolume).split('.')[0]
             atlasMask = os.path.join(outfile, prefix + '_T2AtlasMask.nii.gz')
@@ -73,9 +84,15 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                     subprocess.list2cmdline(command_args),
                     result.stdout,
                 )
-            registrationT2 = maskedT2
+            T2data = maskedT2
 
-        command = f"reg_aladin -ref {inputVolume} -flo {registrationT2} -res {outputT2w} -rigOnly -aff {outputAff}"
+        # Rigidly registers the individual T2 BET image T2data (moving image,
+        # -flo) to the rsfMRI space defined by inputVolume (reference, -ref).
+        # outputT2w (-res) is the resampled T2 image in the rsfMRI grid.
+        # At the same time, -aff creates outputAff, the new T2-to-rsfMRI
+        # transformation matrix. Despite its name, this matrix contains only
+        # rotations and translations because -rigOnly is specified.
+        command = f"reg_aladin -ref {inputVolume} -flo {T2data} -res {outputT2w} -rigOnly -aff {outputAff}"
         command_args = shlex.split(command)
         try:
             result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
@@ -83,9 +100,12 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         except Exception as e:
             LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
             raise
-        #  resample Annotation
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
-
+        # Transforms brain_anno from the individual T2 space (moving image,
+        # -flo) into the rsfMRI grid of inputVolume (-ref). It applies
+        # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin above.
+        # outputAnno (-res) is the individual annotation in rsfMRI space (*_Anno.nii.gz);
+        # -inter 0 uses nearest-neighbour interpolation to preserve label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {brain_anno} -cpp {outputAff} -inter 0 -res {outputAnno}"
         command_args = shlex.split(command)
         try:
@@ -102,6 +122,12 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         sh.copy(require_single_match(pathT2, "DTI split annotation"), outputAnnoSplit)
     else:
         outputAnnoSplit_T2 = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit_T2w.nii.gz')
+        # Transforms splitAnno from SIGMA atlas space (moving image, -flo) into
+        # the individual T2 space, using the grid of brain_anno as the target
+        # grid (-ref). bsplineMatrix is the existing non-linear SIGMA-to-T2
+        # B-spline transformation created by the anatomical T2 workflow.
+        # outputAnnoSplit_T2 (-res) is the split annotation in individual T2
+        # space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {splitAnno} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_T2}"
         command_args = shlex.split(command)
         try:
@@ -110,7 +136,11 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         except Exception as e:
             LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
             raise
-
+        # Transforms outputAnnoSplit_T2 from individual T2 space (moving image,
+        # -flo) into the rsfMRI grid of inputVolume (-ref). It applies
+        # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin.
+        # outputAnnoSplit (-res) is the split annotation in rsfMRI space;
+        # -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_T2} -trans {outputAff} -inter 0 -res {outputAnnoSplit}"
         command_args = shlex.split(command)
         try:
@@ -128,6 +158,12 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         sh.copy(require_single_match(pathT2, "DTI parental split annotation"), outputAnnoSplit_rsfMRI)
     else:
         outputAnnoSplit_rsfMRI_T2 = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit_parental_T2w.nii.gz')
+        # Transforms the parental split annotation splitAnno_rsfMRI from SIGMA
+        # atlas space (moving image, -flo) into the individual T2 grid defined
+        # by brain_anno (-ref). It applies bsplineMatrix, the existing
+        # non-linear SIGMA-to-T2 B-spline transformation from the anatomical
+        # workflow. outputAnnoSplit_rsfMRI_T2 (-res) is the temporary parental
+        # split annotation in T2 space; -inter 0 preserves its label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {splitAnno_rsfMRI} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_rsfMRI_T2}"
         command_args = shlex.split(command)
         try:
@@ -136,7 +172,11 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         except Exception as e:
             LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
             raise
-        
+        # Transforms outputAnnoSplit_rsfMRI_T2 from individual T2 space
+        # (moving image, -flo) into the rsfMRI grid of inputVolume (-ref).
+        # It applies outputAff, the rigid T2-to-rsfMRI matrix created above.
+        # outputAnnoSplit_rsfMRI (-res) is the parental split annotation in
+        # rsfMRI space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_rsfMRI_T2} -trans {outputAff} -inter 0 -res {outputAnnoSplit_rsfMRI}"
         command_args = shlex.split(command)
         try:
@@ -155,6 +195,12 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         sh.copy(require_single_match(pathT2, "DTI parental annotation"), outputAnno_rsfMRI)
     else: 
         outputAnno_rsfMRI_T2 = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno_parental_T2w.nii.gz')
+        # Transforms the parental annotation anno_rsfMRI from SIGMA atlas space
+        # (moving image, -flo) into the individual T2 grid defined by
+        # brain_anno (-ref). It applies bsplineMatrix, the existing non-linear
+        # SIGMA-to-T2 B-spline transformation from the anatomical workflow.
+        # outputAnno_rsfMRI_T2 (-res) is the temporary parental annotation in
+        # T2 space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {anno_rsfMRI} -trans {bsplineMatrix} -inter 0 -res {outputAnno_rsfMRI_T2}"
         command_args = shlex.split(command)
         try:
@@ -163,7 +209,11 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         except Exception as e:
             LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
             raise
-
+        # Transforms outputAnno_rsfMRI_T2 from individual T2 space (moving
+        # image, -flo) into the rsfMRI grid of inputVolume (-ref). It applies
+        # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin.
+        # outputAnno_rsfMRI (-res) is the parental annotation in rsfMRI space;
+        # -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnno_rsfMRI_T2} -trans {outputAff} -inter 0 -res {outputAnno_rsfMRI}"
         command_args = shlex.split(command)
         try:
@@ -174,9 +224,14 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
             raise
         os.remove(outputAnno_rsfMRI_T2)
         
-        # resample in-house developed tempalate
         outputTemplate = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Template.nii.gz')
-        
+
+        # Transforms the anatomical intensity image brain_template from
+        # individual T2 space (moving image, -flo) into the rsfMRI grid of
+        # inputVolume (-ref). It applies outputAff, the rigid T2-to-rsfMRI
+        # matrix created by reg_aladin. outputTemplate (-res) is the anatomical
+        # template in rsfMRI space. Nearest-neighbour label interpolation is
+        # intentionally not requested because this is an intensity image.
         command = f"reg_resample -ref {inputVolume} -flo {brain_template} -trans {outputAff} -res {outputTemplate}"
         command_args = shlex.split(command)
         try:
