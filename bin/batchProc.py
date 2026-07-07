@@ -23,8 +23,8 @@ from tqdm import tqdm
 import multiprocessing
 import logging
 import shlex
-import sys
 import time
+import sys
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 
@@ -250,6 +250,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
+                    if cfg.get("func_skip_smoothing"):
+                        command += ' --skip-smoothing'
                     command += f' --bet {cfg["func_bet"]}'
                     if cfg.get("func_frac") is not None:
                         command += f' -f {cfg["func_frac"]}'
@@ -273,6 +275,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
+                    if cfg.get("func_atlas_mask_t2"):
+                        command += " --atlas-mask-t2"
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -388,8 +392,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_average_b0"):
                         command += ' --average-b0'
 
-                    if cfg.get("dwi_skip_min_projection"):
-                        command += ' --skip-min-projection'
+                    if cfg.get("dwi_skip_smoothing"):
+                        command += ' --skip-smoothing'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -747,9 +751,9 @@ if __name__ == "__main__":
         help="Brain extraction method for DWI: skip, bet or bet4animal. Default: bet"
     )
     dwi.add_argument(
-        "--dwi-skip-min-projection",
+        "--dwi-skip-smoothing",
         action="store_true",
-        help="Skip minimum intensity projection step"
+        help="Skip spatial median smoothing in dwi preprocessing; the 3D median reference image is still created"
     )
     dwi.add_argument(
         "--dwi-frac",
@@ -786,6 +790,11 @@ if __name__ == "__main__":
         help="Bias field correction for fMRI: none or ANTs (default: None)"
     )
     func.add_argument(
+        "--func-skip-smoothing",
+        action="store_true",
+        help="Skip spatial median smoothing in fMRI preprocessing; the 3D median reference image is still created"
+    )
+    func.add_argument(
         "--func-bet",
         choices=["skip", "bet", "bet4animal"],
         type=str.lower,
@@ -813,6 +822,11 @@ if __name__ == "__main__":
         type=float,
         metavar=("X", "Y", "Z"),
         help="BET center in voxel coordinates for fMRI"
+    )
+    func.add_argument(
+        "--func-atlas-mask-t2",
+        action="store_true",
+        help="Mask the T2 BET with the T2 registered atlas annotation before fMRI registration"
     )
 
     # ============================================================
@@ -909,7 +923,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
 
     custom_parameters = get_explicit_cli_parameters(parser, args, sys.argv[1:])
 
