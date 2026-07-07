@@ -212,42 +212,45 @@ def denoise_patch2self(input_file, output_path, b0_thresh=100):
     #     print("Final denoised image sform after copying geometry:", output.header.get_sform())
     return output_file
 
-def smoothIMG(input_file, output_path,skip_min=False):
+def smoothIMG(input_file, output_path, skip_smoothing=False):
     """
-    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
-    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
-    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
-    a float32/header-normalized copy. If skip_min is True, no MP file is
-    created and the input image is passed directly to FSL smoothing.
+    Prepare a 3D reference image and optionally apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise median projection across the 4th dimension is
+    written as *MP.nii.gz. For 3D inputs, the MP image is just a
+    float32/header-normalized copy.
     """
+    source_base = os.path.basename(input_file).split('.')[0]
     data = nib.load(input_file)
     vol = data.get_fdata()
-    if not skip_min:
-        if vol.ndim == 4:
-            img_smooth = np.min(vol, axis=3).astype(np.float32)
-        elif vol.ndim == 3:
-            img_smooth = vol.astype(np.float32)
-        else:
-            raise ValueError(f"Unsupported image dimensionality: {vol.ndim}")
-        unscaledNiiData = nib.Nifti1Image(img_smooth, data.affine)
-        unscaledNiiData.set_qform(data.affine, code=1)
-        unscaledNiiData.set_sform(data.affine, code=1)
+    if vol.ndim == 4:
+        img_smooth = np.median(vol, axis=3).astype(np.float32)
+    elif vol.ndim == 3:
+        img_smooth = vol.astype(np.float32)
+    else:
+        raise ValueError(f"Unsupported image dimensionality: {vol.ndim}")
+    unscaledNiiData = nib.Nifti1Image(img_smooth, data.affine)
+    unscaledNiiData.set_qform(data.affine, code=1)
+    unscaledNiiData.set_sform(data.affine, code=1)
 
-        hdrOut = unscaledNiiData.header
-        hdrOut.set_data_dtype(np.float32)
-        space_unit, time_unit = hdrOut.get_xyzt_units()
+    hdrOut = unscaledNiiData.header
+    hdrOut.set_data_dtype(np.float32)
+    space_unit, time_unit = hdrOut.get_xyzt_units()
 
-        if not space_unit or space_unit.lower() == "unknown":
-            space_unit = "mm"
-        if not time_unit or time_unit.lower() == "unknown":
-            time_unit = "sec"
-        hdrOut.set_xyzt_units(space_unit, time_unit)
-        output_file = os.path.join(os.path.dirname(input_file),
-                                   os.path.basename(input_file).split('.')[0] + 'MP.nii.gz')
-        nib.save(unscaledNiiData, output_file)
-        input_file = output_file
+    if not space_unit or space_unit.lower() == "unknown":
+        space_unit = "mm"
+    if not time_unit or time_unit.lower() == "unknown":
+        time_unit = "sec"
+    hdrOut.set_xyzt_units(space_unit, time_unit)
+    output_file = os.path.join(os.path.dirname(input_file),
+                               os.path.basename(input_file).split('.')[0] + 'MP.nii.gz')
+    nib.save(unscaledNiiData, output_file)
+    input_file = output_file
 
-    output_file = os.path.join(output_path, os.path.basename(input_file).split('.')[0] + 'Smooth.nii.gz')
+    if skip_smoothing:
+        print("Spatial smoothing skipped")
+        return input_file
+
+    output_file = os.path.join(output_path, source_base + 'Smooth.nii.gz')
     myGauss =  fsl.SpatialFilter(
         in_file = input_file,
         out_file = output_file, 
@@ -261,7 +264,6 @@ def smoothIMG(input_file, output_path,skip_min=False):
     hdr = img.header
     hdr["pixdim"][4:8] = 1
     nib.save(img, output_file)
-
     return output_file
 
 def thresh(input_file, output_path):
@@ -353,9 +355,9 @@ if __name__ == "__main__":
         action='store_true'
     )
     parser.add_argument(
-        '--skip-min-projection',
-        help='Skip creation of the 3D minimum-projection reference image before smoothing',
-        action='store_true'
+        '--skip-smoothing',
+        action='store_true',
+        help='Skip the FSL spatial median smoothing step; still creates the 3D median reference image'
     )
     args = parser.parse_args()
 
@@ -445,7 +447,7 @@ if __name__ == "__main__":
         thread.start()
 
         try:
-            output_smooth = smoothIMG(input_file = input_file, output_path = output_path, skip_min=args.skip_min_projection)
+            output_smooth = smoothIMG(input_file = input_file, output_path = output_path, skip_smoothing=args.skip_smoothing)
         finally:
             stop_event.set()
             thread.join()
