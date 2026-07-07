@@ -184,7 +184,7 @@ def process_subject(subject_dir, out_dir, n_slices=10):
     return report_entries
 
 def _report_timestamp():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S Uhr")
+    return datetime.now().strftime("%d-%m-%Y %H:%M:%S Uhr")
 
 def write_html_report(report_entries, out_dir):
     # Try to extract subject and session IDs from the first entry's filename path

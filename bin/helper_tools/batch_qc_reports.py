@@ -202,7 +202,7 @@ def _format_parameter_value(value):
 
 
 def _report_timestamp():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S Uhr")
+    return datetime.now().strftime("%d-%m-%Y %H:%M:%S Uhr")
 
 
 def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
