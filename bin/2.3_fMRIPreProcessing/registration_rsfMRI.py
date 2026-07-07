@@ -39,6 +39,31 @@ def require_single_match(matches, description):
         )
     return matches[0]
 
+
+def run_command(command):
+    if isinstance(command, str):
+        command_args = shlex.split(command)
+        command_display = command
+    else:
+        command_args = command
+        command_display = subprocess.list2cmdline(command_args)
+
+    try:
+        result = subprocess.run(
+            command_args,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        LOGGER.info("Output of %s:\n%s", command_display, result.stdout)
+        if result.stderr:
+            LOGGER.info("Stderr of %s:\n%s", command_display, result.stderr)
+        return result
+    except Exception as e:
+        LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_display, e)
+        raise
+
 # Parameters passed to regSIG2rsfMRI:
 # inputVolume: Preprocessed rsfMRI reference image and final target space.
 # T2data: Individual brain-extracted T2 image (*/anat/*Bet.nii.gz).
@@ -72,18 +97,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                 ["fslmaths", brain_anno, "-bin", "-dilM", atlasMask], #binarize atlas and dilate it by one voxel layer for tolerance
                 ["fslmaths", T2data, "-mas", atlasMask, maskedT2], #apply mask to the T2 BET
             ]:
-                result = subprocess.run(
-                    command_args,
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                LOGGER.info(
-                    "Output of %s:\n%s",
-                    subprocess.list2cmdline(command_args),
-                    result.stdout,
-                )
+                run_command(command_args)
             T2data = maskedT2
 
         # Rigidly registers the individual T2 BET image T2data (moving image,
@@ -93,13 +107,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         # transformation matrix. Despite its name, this matrix contains only
         # rotations and translations because -rigOnly is specified.
         command = f"reg_aladin -ref {inputVolume} -flo {T2data} -res {outputT2w} -rigOnly -aff {outputAff}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
         # Transforms brain_anno from the individual T2 space (moving image,
         # -flo) into the rsfMRI grid of inputVolume (-ref). It applies
@@ -107,14 +115,8 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         # outputAnno (-res) is the individual annotation in rsfMRI space (*_Anno.nii.gz);
         # -inter 0 uses nearest-neighbour interpolation to preserve label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {brain_anno} -cpp {outputAff} -inter 0 -res {outputAnno}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
-
+        run_command(command)
+    ''' Atlas files are all the same the following steps are redundant but are kept for clarity and future flexibility
     # resample split annotation
     outputAnnoSplit = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit.nii.gz')
     if dref:
@@ -129,26 +131,14 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         # outputAnnoSplit_T2 (-res) is the split annotation in individual T2
         # space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {splitAnno} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_T2}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         # Transforms outputAnnoSplit_T2 from individual T2 space (moving image,
         # -flo) into the rsfMRI grid of inputVolume (-ref). It applies
         # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin.
         # outputAnnoSplit (-res) is the split annotation in rsfMRI space;
         # -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_T2} -trans {outputAff} -inter 0 -res {outputAnnoSplit}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         os.remove(outputAnnoSplit_T2)
 
     # resample split parental annotation
@@ -165,26 +155,14 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         # workflow. outputAnnoSplit_rsfMRI_T2 (-res) is the temporary parental
         # split annotation in T2 space; -inter 0 preserves its label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {splitAnno_rsfMRI} -trans {bsplineMatrix} -inter 0 -res {outputAnnoSplit_rsfMRI_T2}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         # Transforms outputAnnoSplit_rsfMRI_T2 from individual T2 space
         # (moving image, -flo) into the rsfMRI grid of inputVolume (-ref).
         # It applies outputAff, the rigid T2-to-rsfMRI matrix created above.
         # outputAnnoSplit_rsfMRI (-res) is the parental split annotation in
         # rsfMRI space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnnoSplit_rsfMRI_T2} -trans {outputAff} -inter 0 -res {outputAnnoSplit_rsfMRI}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         os.remove(outputAnnoSplit_rsfMRI_T2)
 
     # resample parental annotation
@@ -202,46 +180,28 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         # outputAnno_rsfMRI_T2 (-res) is the temporary parental annotation in
         # T2 space; -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {brain_anno} -flo {anno_rsfMRI} -trans {bsplineMatrix} -inter 0 -res {outputAnno_rsfMRI_T2}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         # Transforms outputAnno_rsfMRI_T2 from individual T2 space (moving
         # image, -flo) into the rsfMRI grid of inputVolume (-ref). It applies
         # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin.
         # outputAnno_rsfMRI (-res) is the parental annotation in rsfMRI space;
         # -inter 0 preserves the discrete atlas label IDs.
         command = f"reg_resample -ref {inputVolume} -flo {outputAnno_rsfMRI_T2} -trans {outputAff} -inter 0 -res {outputAnno_rsfMRI}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+        run_command(command)
         os.remove(outputAnno_rsfMRI_T2)
-        
-        outputTemplate = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Template.nii.gz')
+        '''
+    outputTemplate = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Template.nii.gz')
 
-        # Transforms the anatomical intensity image brain_template from
-        # individual T2 space (moving image, -flo) into the rsfMRI grid of
-        # inputVolume (-ref). It applies outputAff, the rigid T2-to-rsfMRI
-        # matrix created by reg_aladin. outputTemplate (-res) is the anatomical
-        # template in rsfMRI space. Nearest-neighbour label interpolation is
-        # intentionally not requested because this is an intensity image.
-        command = f"reg_resample -ref {inputVolume} -flo {brain_template} -trans {outputAff} -res {outputTemplate}"
-        command_args = shlex.split(command)
-        try:
-            result = subprocess.run(command_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,text=True)
-            LOGGER.info("Output of %s:\n%s", command, result.stdout)
-        except Exception as e:
-            LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_args, e)
-            raise
+    # Transforms the anatomical intensity image brain_template from
+    # individual T2 space (moving image, -flo) into the rsfMRI grid of
+    # inputVolume (-ref). It applies outputAff, the rigid T2-to-rsfMRI
+    # matrix created by reg_aladin. outputTemplate (-res) is the anatomical
+    # template in rsfMRI space. Nearest-neighbour label interpolation is
+    # intentionally not requested because this is an intensity image.
+    command = f"reg_resample -ref {inputVolume} -flo {brain_template} -trans {outputAff} -res {outputTemplate}"
+    run_command(command)
     
-    return outputAnnoSplit
+    return outputAnno
 
 def find_RefStroke(refStrokePath,inputVolume):
     search_patterns = [
@@ -277,7 +237,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Registration of SIGMA Brain Atlas to rsfMRI')
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i', '--inputVolume', help='Path to rsfMRI data after preprocessing', required=True)
-    parser.add_argument('-d', '--dtiasRef', action='store_true', help='use DTI as reference if data quality is low')
+    parser.add_argument('-d', '--dtiasRef', action='store_true', help='use DTI as reference if data quality is low. (Currently commented out/unused)')
     parser.add_argument('--atlas-mask-t2', action='store_true',
                         help='mask the T2 BET with the registered atlas annotation before registration')
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask', nargs='?', type=str,
