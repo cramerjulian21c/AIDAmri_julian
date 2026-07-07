@@ -249,6 +249,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
+                    if cfg.get("func_skip_smoothing"):
+                        command += ' --skip-smoothing'
                     command += f' --bet {cfg["func_bet"]}'
                     if cfg.get("func_frac") is not None:
                         command += f' -f {cfg["func_frac"]}'
@@ -785,6 +787,11 @@ if __name__ == "__main__":
         type=str.lower,
         default=None,
         help="Bias field correction for fMRI: none or ANTs (default: None)"
+    )
+    func.add_argument(
+        "--func-skip-smoothing",
+        action="store_true",
+        help="Skip spatial median smoothing in fMRI preprocessing; the 3D median reference image is still created"
     )
     func.add_argument(
         "--func-bet",
