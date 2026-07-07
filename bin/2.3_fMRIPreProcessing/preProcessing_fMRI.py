@@ -130,7 +130,7 @@ def smoothIMG(input_file, outputPath, skip_smoothing=False):
     """
     Prepare a 3D reference image and optionally apply FSL's median spatial filter.
     For 4D inputs, a voxel-wise median projection across the 4th dimension is
-    written as *MP.nii.gz. For 3D inputs, the DN image is just a
+    written as *MP.nii.gz. For 3D inputs, the MP image is just a
     float32/header-normalized copy.
     """
     source_base = os.path.basename(input_file).split('.')[0]
