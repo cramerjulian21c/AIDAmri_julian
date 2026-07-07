@@ -391,8 +391,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     if cfg.get("dwi_average_b0"):
                         command += ' --average-b0'
 
-                    if cfg.get("dwi_skip_min_projection"):
-                        command += ' --skip-min-projection'
+                    if cfg.get("dwi_skip_smoothing"):
+                        command += ' --skip-smoothing'
 
                     result = run_subprocess(command, dataFormat, step)
                     if result != 0:
@@ -750,9 +750,9 @@ if __name__ == "__main__":
         help="Brain extraction method for DWI: skip, bet or bet4animal. Default: bet"
     )
     dwi.add_argument(
-        "--dwi-skip-min-projection",
+        "--dwi-skip-smoothing",
         action="store_true",
-        help="Skip minimum intensity projection step"
+        help="Skip spatial median smoothing in dwi preprocessing; the 3D median reference image is still created"
     )
     dwi.add_argument(
         "--dwi-frac",
