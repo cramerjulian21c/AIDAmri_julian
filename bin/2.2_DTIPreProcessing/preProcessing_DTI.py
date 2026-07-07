@@ -224,7 +224,7 @@ def smoothIMG(input_file, output_path,skip_min=False):
     vol = data.get_fdata()
     if not skip_min:
         if vol.ndim == 4:
-            img_smooth = np.min(vol, axis=3).astype(np.float32)
+            img_smooth = np.median(vol, axis=3).astype(np.float32)
         elif vol.ndim == 3:
             img_smooth = vol.astype(np.float32)
         else:
