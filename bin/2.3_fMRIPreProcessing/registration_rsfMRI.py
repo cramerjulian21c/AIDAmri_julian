@@ -64,6 +64,7 @@ def run_command(command):
         LOGGER.error("Error while executing the command: %s\nErrorcode: %s", command_display, e)
         raise
 
+
 # Parameters passed to regSIG2rsfMRI:
 # inputVolume: Preprocessed rsfMRI reference image and final target space.
 # T2data: Individual brain-extracted T2 image (*/anat/*Bet.nii.gz).
@@ -190,6 +191,18 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         run_command(command)
         os.remove(outputAnno_rsfMRI_T2)
         '''
+    #Create pipline downstream compatible output (copies of fMRI anno)
+    prefix = os.path.basename(inputVolume).split('.')[0]
+    outputAnnoSplit = os.path.join(outfile, prefix + '_AnnoSplit.nii.gz')
+    outputAnnoSplit_parental = os.path.join(outfile, prefix + '_AnnoSplit_parental.nii.gz')
+    outputAnno_parental = os.path.join(outfile, prefix + '_Anno_parental.nii.gz')
+
+    # The split/parental atlas inputs are currently identical to outputAnno, so
+    # create downstream-compatible filenames as direct copies.
+    for target in [outputAnnoSplit, outputAnnoSplit_parental, outputAnno_parental]:
+        sh.copyfile(outputAnno, target)
+        LOGGER.info("Copied %s to %s", outputAnno, target)
+
     outputTemplate = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Template.nii.gz')
 
     # Transforms the anatomical intensity image brain_template from
