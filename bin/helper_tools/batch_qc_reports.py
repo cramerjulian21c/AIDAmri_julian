@@ -1,6 +1,7 @@
 import html
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -200,11 +201,16 @@ def _format_parameter_value(value):
     return str(value)
 
 
+def _report_timestamp():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S Uhr")
+
+
 def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
     html_path = Path(out_dir) / report_name
     subjects = sorted({entry["subject"] for entry in entries})
     sessions = sorted({entry["session"] for entry in entries})
     modalities = sorted({entry["modality"] for entry in entries})
+    generated_at = _report_timestamp()
 
     with open(html_path, "w") as f:
         f.write(f"<html><head><title>{html.escape(title)}</title>\n")
@@ -217,6 +223,7 @@ def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
             .custom-parameters table { border-collapse: collapse; }
             .custom-parameters th { padding: 3px 24px 3px 0; text-align: left; vertical-align: top; }
             .custom-parameters td { padding: 3px 0; }
+            .report-generated { color: #555; font-size: 0.95em; margin: -10px 0 24px; }
             .report-entry { margin-bottom: 40px; }
             .report-info { font-size: 1.0em; margin-bottom: 8px; line-height: 1.5; }
             .report-img { width: 100%; max-width: 1200px; border: 1px solid #ccc; }
@@ -255,6 +262,8 @@ def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
                 f.write(f"<option value='{escaped_value}'>{escaped_value}</option>")
             f.write("</select></label>\n")
         f.write("</div><div style='height:60px;'></div>\n")
+        f.write(f"<h1>{html.escape(title)}</h1>\n")
+        f.write(f"<p class='report-generated'><b>Created:</b> {html.escape(generated_at)}</p>\n")
         if custom_parameters:
             f.write("<section class='custom-parameters'>\n")
             f.write("<h2>Custom parameters</h2>\n<table>\n")
@@ -266,7 +275,6 @@ def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
                     "</tr>\n"
                 )
             f.write("</table>\n</section>\n")
-        f.write(f"<h1>{html.escape(title)}</h1>\n")
 
         for entry in entries:
             f.write(
