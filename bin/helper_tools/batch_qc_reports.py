@@ -15,6 +15,10 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 
+from helper_tools.timezone_utils import get_local_timezone
+
+REPORT_TIMEZONE = get_local_timezone()
+
 
 def _as_3d(data):
     data = np.asarray(data)
@@ -202,7 +206,7 @@ def _format_parameter_value(value):
 
 
 def _report_timestamp():
-    return datetime.now().strftime("%d-%m-%Y %H:%M:%S Uhr")
+    return datetime.now(REPORT_TIMEZONE).strftime("%d-%m-%Y %H:%M:%S Uhr (%Z)")
 
 
 def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
