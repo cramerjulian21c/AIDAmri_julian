@@ -16,6 +16,7 @@ python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 
 import os
 import fnmatch
+from datetime import datetime
 from pathlib import Path
 import concurrent.futures
 import subprocess
@@ -26,7 +27,26 @@ import shlex
 import time
 import sys
 
+from helper_tools.timezone_utils import get_local_timezone
+
 FATAL_LIP_HEADER_EXIT_CODE = 86
+BATCHPROC_TIMEZONE = get_local_timezone()
+
+
+class BatchProcFormatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        timestamp = datetime.fromtimestamp(record.created, BATCHPROC_TIMEZONE)
+        if datefmt:
+            return timestamp.strftime(datefmt)
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3] + f" {timestamp.tzname()}"
+
+
+def configure_logging(log_file_path):
+    handler = logging.FileHandler(log_file_path)
+    handler.setFormatter(
+        BatchProcFormatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
 
 def findData(projectPath, sessions, data_types):
@@ -931,7 +951,7 @@ if __name__ == "__main__":
     
     #configurate the logging module
     log_file_path = os.path.join(pathToData, "batchproc_log.txt")
-    logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force =True)
+    configure_logging(log_file_path)
 
     stc = args.slice_time_correction
 
