@@ -25,6 +25,7 @@ import multiprocessing
 import logging
 import shlex
 import time
+import sys
 
 from helper_tools.timezone_utils import get_local_timezone
 
@@ -942,7 +943,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    import sys
 
     custom_parameters = get_explicit_cli_parameters(parser, args, sys.argv[1:])
 
