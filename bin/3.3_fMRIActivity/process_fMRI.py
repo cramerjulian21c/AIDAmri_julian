@@ -22,9 +22,6 @@ import create_seed_rois
 import fsl_mean_ts
 from pathlib import Path 
 import json
-#makes sure to import bet.py
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET, skip_bet_function
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
@@ -93,6 +90,122 @@ def copyEPIToProcessingFolder(file_name, proc_Path):
     output_file = os.path.join(proc_Path, os.path.basename(file_name))
     shutil.copyfile(file_name, output_file)
     return output_file
+
+
+def _strip_nii_gz(path):
+    name = os.path.basename(path)
+    if name.endswith(".nii.gz"):
+        return name[:-7]
+    return os.path.splitext(name)[0]
+
+
+def _is_bet_file(path):
+    name = os.path.basename(path)
+    return name.endswith("Bet.nii.gz") and not name.endswith("_mask.nii.gz")
+
+
+def findExistingBET(raw_file, bet_file=None):
+    origin_path = os.path.dirname(raw_file)
+
+    if bet_file is not None:
+        if not os.path.exists(bet_file):
+            sys.exit(f"Error: BET file does not exist: {bet_file}")
+        if not _is_bet_file(bet_file):
+            sys.exit(f"Error: BET file must end with Bet.nii.gz: {bet_file}")
+        return bet_file
+
+    if _is_bet_file(raw_file):
+        return raw_file
+
+    candidates = sorted(
+        file_name for file_name in glob.glob(os.path.join(origin_path, "*Bet.nii.gz"))
+        if _is_bet_file(file_name)
+    )
+
+    if len(candidates) == 0:
+        sys.exit(
+            "Error: No existing BET file found in '%s'. "
+            "Run preProcessing_fMRI.py first or pass --bet-file." % (origin_path,)
+        )
+
+    raw_stem = _strip_nii_gz(raw_file)
+    preferred = [
+        candidate for candidate in candidates
+        if _strip_nii_gz(candidate).startswith(raw_stem)
+    ]
+
+    if len(preferred) == 1:
+        return preferred[0]
+
+    if len(preferred) > 1:
+        candidate_list = "\n  ".join(preferred)
+        sys.exit(
+            "Error: Multiple matching BET files found for '%s':\n  %s\n"
+            "Pass the intended file with --bet-file." % (raw_file, candidate_list)
+        )
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    candidate_list = "\n  ".join(candidates)
+    sys.exit(
+        "Error: Multiple BET files found in '%s':\n  %s\n"
+        "Pass the intended file with --bet-file." % (origin_path, candidate_list)
+    )
+
+
+def resolveRawEPIFromBETInput(bet_file):
+    origin_path = os.path.dirname(bet_file)
+    candidates = sorted(glob.glob(os.path.join(origin_path, "*EPI.nii.gz")))
+
+    if len(candidates) == 0:
+        sys.exit(
+            "Error: Input is a BET file, but no raw *EPI.nii.gz file was found in '%s'."
+            % (origin_path,)
+        )
+
+    bet_stem = _strip_nii_gz(bet_file)
+    preferred = [
+        candidate for candidate in candidates
+        if bet_stem.startswith(_strip_nii_gz(candidate))
+    ]
+
+    if len(preferred) == 1:
+        return preferred[0]
+
+    if len(preferred) > 1:
+        candidate_list = "\n  ".join(preferred)
+        sys.exit(
+            "Error: Multiple raw EPI files match BET file '%s':\n  %s"
+            % (bet_file, candidate_list)
+        )
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    candidate_list = "\n  ".join(candidates)
+    sys.exit(
+        "Error: Input is a BET file, but the raw EPI file is ambiguous in '%s':\n  %s"
+        % (origin_path, candidate_list)
+    )
+
+
+def copyExistingBETToProcessingFolder(bet_file, proc_Path):
+    mask_file = bet_file.replace(".nii.gz", "_mask.nii.gz")
+    if not os.path.exists(mask_file):
+        sys.exit(
+            "Error: Existing BET mask is missing:\n  %s\n"
+            "The processing step reuses the BET mask from preprocessing and no longer creates a new one."
+            % (mask_file,)
+        )
+
+    copied_bet = os.path.join(proc_Path, os.path.basename(bet_file))
+    copied_mask = os.path.join(proc_Path, os.path.basename(mask_file))
+    shutil.copyfile(bet_file, copied_bet)
+    shutil.copyfile(mask_file, copied_mask)
+    print("Copied existing BET to %s" % (copied_bet,))
+    print("Copied existing BET mask to %s" % (copied_mask,))
+    return copied_bet, copied_mask
 
 
 def getEPIMean(file_name,proc_Path):
@@ -218,11 +331,7 @@ def delete_txt_file(file):
 
 def startProcess(
     Rawfile_name,
-    bet_method="bet",
-    frac=0.1,
-    radius=60,
-    gradient=0.13,
-    center=None,
+    bet_file=None,
 ):
     # generate folder for images
     origin_Path = os.path.dirname(Rawfile_name)
@@ -257,19 +366,9 @@ def startProcess(
     # calculate EPIMean
     file_nameEPI = getEPIMean(file_name,proc_Path)
 
-    # apply BET on EPImean
-    if bet_method == "skip":
-        file_nameEPI_BET, mask_file = skip_bet_function(file_nameEPI, return_mask=True)
-    else:
-        file_nameEPI_BET,mask_file = applyBET(
-            file_nameEPI,
-            frac=frac,
-            radius=radius,
-            horizontal_gradient=gradient,
-            use_bet4animal=bet_method == "bet4animal",
-            center=center,
-            return_mask=True
-        )
+    # reuse the existing BET from fMRI preprocessing; keep originals in func unchanged
+    existing_bet_file = findExistingBET(Rawfile_name, bet_file=bet_file)
+    _, mask_file = copyExistingBETToProcessingFolder(existing_bet_file, proc_Path)
 
     #apply Mask on original dataset
     applyMask(file_name,mask_file)
@@ -289,7 +388,7 @@ def startProcess(
     else:
         print("Error: Processing not possible, because either there is no folder called Physio or the related physio data for the scan is missing there.")
 
-    return mcfFile_name
+    return mcfFile_name, mask_file
 
 if __name__ == "__main__":
 
@@ -300,18 +399,13 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Process fMRI data')
     requiredNamed = parser.add_argument_group('required arguments')
-    requiredNamed.add_argument('-i', '--input', help='Path to the RAW data of rsfMRI NIfTI file', required=True)
+    requiredNamed.add_argument('-i', '--input', help='Path to the BET NIFTI', required=True)
 
-    parser.add_argument('-t', '--TR', default=TR, help='Current TR value')
-    parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, help='High-pass filter cutoff sec')
-    parser.add_argument('-f', '--FWHM', default=FWHM, help='Full width at half maximum')
+    parser.add_argument('-t', '--TR', default=TR, type=float, help='Current TR value')
+    parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, type=float, help='High-pass filter cutoff sec')
+    parser.add_argument('-f', '--FWHM', default=FWHM, type=float, help='Full width at half maximum')
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
-    parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
-                        help='Brain extraction method for fMRI process: skip, bet or bet4animal. Default: bet')
-    parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
-    parser.add_argument('--bet-radius', type=int, default=60, help='BET head radius in mm')
-    parser.add_argument('--bet-gradient', type=float, default=0.13, help='BET horizontal gradient')
-    parser.add_argument('-ctr', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
+    parser.add_argument('--bet-file', default=None, help='Existing func/*Bet.nii.gz file to reuse when auto-detection is ambiguous')
 
     args = parser.parse_args()
 
@@ -331,13 +425,17 @@ if __name__ == "__main__":
     if not os.path.exists(input_file):
         sys.exit(f"Error: input file does not exist: {input_file}")
 
-    mcfFile_name = startProcess(
+    bet_file = args.bet_file
+    if _is_bet_file(input_file):
+        if bet_file is not None and os.path.abspath(bet_file) != os.path.abspath(input_file):
+            sys.exit("Error: Use either -i with a BET file or --bet-file, not both.")
+        bet_file = input_file
+        input_file = resolveRawEPIFromBETInput(bet_file)
+        print("Using raw EPI file for processing: %s" % (input_file,))
+
+    mcfFile_name, mask_file = startProcess(
         input_file,
-        bet_method=args.bet,
-        frac=args.bet_frac,
-        radius=args.bet_radius,
-        gradient=args.bet_gradient,
-        center=args.center
+        bet_file=bet_file
     )
 
     
@@ -345,8 +443,8 @@ if __name__ == "__main__":
     if stc: 
         print("Starting Regression with slice time correction:")
         # find meta data json file
-        meta_data_file_name = Path(args.input).name.replace(".nii.gz", ".json")
-        meta_data_file = os.path.join(Path(args.input).parent, meta_data_file_name)
+        meta_data_file_name = Path(input_file).name.replace(".nii.gz", ".json")
+        meta_data_file = os.path.join(Path(input_file).parent, meta_data_file_name)
 
         with open(meta_data_file, "r") as infile:
             meta_data = json.load(infile)
@@ -372,11 +470,7 @@ if __name__ == "__main__":
             stc,
             slice_order_path,
             costum_timings_path,
-            bet_method=args.bet,
-            frac=args.bet_frac,
-            radius=args.bet_radius,
-            gradient=args.bet_gradient,
-            center=args.center
+            mask_file=mask_file
         )
 
         # delete temp txt files
@@ -391,11 +485,7 @@ if __name__ == "__main__":
             cutOff_sec,
             TR,
             stc,
-            bet_method=args.bet,
-            frac=args.bet_frac,
-            radius=args.bet_radius,
-            gradient=args.bet_gradient,
-            center=args.center
+            mask_file=mask_file
         )
         print(f"sfrgr_file {sfrgr_file}")
 

@@ -306,25 +306,16 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     errorList.append(message)
                 os.chdir(cwd)
             elif step == "process":
-                currentFile = sorted(currentPath_wData.glob("*EPI.nii.gz"))
+                currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
-                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc} --bet {cfg["func_bet"]}'
-                    if cfg.get("func_frac") is not None:
-                        command += f' --bet-frac {cfg["func_frac"]}'
-                    if cfg.get("func_radius") is not None:
-                        command += f' --bet-radius {cfg["func_radius"]}'
-                    if cfg.get("func_gradient") is not None:
-                        command += f' --bet-gradient {cfg["func_gradient"]}'
-                    if cfg.get("func_center") is not None:
-                        cx, cy, cz = cfg["func_center"]
-                        command += f' -ctr {cx} {cy} {cz}'
+                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
                     os.chdir(cwd)
                 else:
-                    message = f'Could not find *EPI.nii.gz in {str(currentPath_wData)}';
+                    message = f'Could not find *Bet.nii.gz in {str(currentPath_wData)}';
                     logging.error(message)
                     errorList.append(message)
         elif dataFormat == 't2map':

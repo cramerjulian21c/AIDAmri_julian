@@ -14,9 +14,6 @@ import numpy as np
 import nipype.interfaces.fsl as fsl
 import glob
 import shutil
-#makes sure to import bet.py
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.bet import applyBET, skip_bet_function
 
 
 def scaleBy10(input_path,inv):
@@ -222,8 +219,7 @@ def filterFSL(input_file,highpass,tempMean):
 #adjust default parameters if needed
 def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
                     slice_order=None, costum_timings=None,
-                    bet_method="bet", frac=0.1, radius=60,
-                    gradient=0.13, center=None):
+                    mask_file=None):
     # generate folder regr images
     
     origin_Path = os.path.dirname(os.path.dirname(input_File))
@@ -250,18 +246,12 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
 
     # get mean
     meanRegr_File = getMean(regr_FileReal,'mean2')
-    if bet_method == "skip":
-        file_nameEPI_BET, mask_file = skip_bet_function(meanRegr_File, return_mask=True)
-    else:
-        file_nameEPI_BET, mask_file = applyBET(
-            meanRegr_File,
-            frac=frac,
-            radius=radius,
-            horizontal_gradient=gradient,
-            use_bet4animal=bet_method == "bet4animal",
-            center=center,
-            return_mask=True
+    if mask_file is None or not os.path.exists(mask_file):
+        sys.exit(
+            "Error: Existing BET mask is required for regression. "
+            "Pass mask_file from process_fMRI.py or use --mask-file when running regress.py directly."
         )
+    print("Using existing BET mask for regression: %s" % (mask_file,))
     os.remove(meanRegr_File)
     regr_File = applyMask(regr_FileReal,mask_file,'')
 
@@ -321,12 +311,7 @@ if __name__ == "__main__":
 
     requiredNamed = parser.add_argument_group('required named arguments')
     requiredNamed.add_argument('-i','--input', help='Path to input file',required=True)
-    parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
-                        help='Brain extraction method: skip, bet or bet4animal. Default: bet')
-    parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
-    parser.add_argument('--bet-radius', type=int, default=60, help='BET head radius in mm')
-    parser.add_argument('--bet-gradient', type=float, default=0.13, help='BET horizontal gradient')
-    parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
+    parser.add_argument('--mask-file', required=True, help='Existing BET mask file to reuse')
     args = parser.parse_args()
 
 
@@ -337,9 +322,5 @@ if __name__ == "__main__":
 
     result = startRegression(
         input,
-        bet_method=args.bet,
-        frac=args.bet_frac,
-        radius=args.bet_radius,
-        gradient=args.bet_gradient,
-        center=args.center
+        mask_file=args.mask_file
     )
