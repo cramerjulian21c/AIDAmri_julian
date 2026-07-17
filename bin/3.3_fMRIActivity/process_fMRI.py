@@ -392,7 +392,7 @@ def startProcess(
 
 if __name__ == "__main__":
 
-    TR = 1.42
+    TR = 1
     cutOff_sec = 100.0
     FWHM = 3.0
 
