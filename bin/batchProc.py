@@ -16,6 +16,7 @@ python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 
 import os
 import fnmatch
+import csv
 from datetime import datetime
 from pathlib import Path
 import concurrent.futures
@@ -588,6 +589,227 @@ def get_explicit_cli_parameters(parser, args, argv):
     return parameters
 
 
+NON_SAMPLE_OVERRIDE_DESTS = {
+    "help",
+    "input",
+    "sessions",
+    "data_types",
+    "debug_steps",
+    "cpu_cores",
+    "cpu_percent",
+    "exemptionlist",
+    "slice_time_correction",
+}
+
+
+def get_study_id_from_path(path):
+    for part in Path(path).parts:
+        if part.startswith("sub-"):
+            return part
+    return None
+
+
+def get_session_from_path(path):
+    for part in Path(path).parts:
+        if part.startswith("ses-"):
+            return part
+    return None
+
+
+def normalize_exemption_column(column):
+    normalized = column.strip()
+    if normalized.startswith("--"):
+        normalized = normalized[2:]
+
+    if normalized == "StudyID":
+        return "StudyID"
+    if normalized == "session":
+        return "session"
+    return normalized
+
+
+def get_sample_override_actions(parser):
+    actions = {}
+    for action in parser._actions:
+        if action.dest in NON_SAMPLE_OVERRIDE_DESTS:
+            continue
+        long_option = next(
+            (option for option in action.option_strings if option.startswith("--")),
+            None,
+        )
+        if long_option:
+            actions[normalize_exemption_column(long_option)] = action
+    return actions
+
+
+def split_exemption_values(value):
+    if "," in value or ";" in value:
+        return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+    return value.split()
+
+
+def csv_cell_has_value(value):
+    if isinstance(value, list):
+        return any((item or "").strip() for item in value)
+    return bool((value or "").strip())
+
+
+def convert_exemption_item(action, value, column):
+    converter = action.type or str
+    try:
+        converted = converter(value)
+    except Exception as exc:
+        raise ValueError(
+            f"Invalid value {value!r} in exemptionlist column {column!r}: {exc}"
+        ) from exc
+
+    if action.choices is not None and converted not in action.choices:
+        raise ValueError(
+            f"Invalid value {value!r} in exemptionlist column {column!r}. "
+            f"Allowed values: {', '.join(map(str, action.choices))}"
+        )
+    return converted
+
+
+def convert_exemption_value(action, raw_value, column):
+    value = raw_value.strip()
+    if value == "":
+        return None
+
+    if action.nargs == 0:
+        lowered = value.lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+        raise ValueError(
+            f"Invalid boolean value {value!r} in exemptionlist column {column!r}. "
+            "Use true/false, yes/no or 1/0."
+        )
+
+    if action.nargs is None:
+        return convert_exemption_item(action, value, column)
+
+    values = split_exemption_values(value)
+    if isinstance(action.nargs, int) and len(values) != action.nargs:
+        raise ValueError(
+            f"Column {column!r} expects {action.nargs} value(s), got {len(values)}: {value!r}"
+        )
+    if action.nargs == "+" and not values:
+        raise ValueError(f"Column {column!r} expects at least one value")
+
+    return [convert_exemption_item(action, item, column) for item in values]
+
+
+def load_exemptionlist(path, parser):
+    exemption_path = Path(path)
+    if not exemption_path.is_file():
+        raise ValueError(f"Exemptionlist does not exist: {path}")
+
+    override_actions = get_sample_override_actions(parser)
+    exemptions = {}
+
+    with exemption_path.open(newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        if not reader.fieldnames:
+            raise ValueError("Exemptionlist is empty or has no header")
+
+        normalized_columns = {
+            column: normalize_exemption_column(column)
+            for column in reader.fieldnames
+            if column is not None
+        }
+        study_id_columns = [
+            column for column, normalized in normalized_columns.items()
+            if normalized == "StudyID"
+        ]
+        if len(study_id_columns) != 1:
+            raise ValueError("Exemptionlist must contain exactly one StudyID column")
+        study_id_column = study_id_columns[0]
+
+        session_columns = [
+            column for column, normalized in normalized_columns.items()
+            if normalized == "session"
+        ]
+        if len(session_columns) != 1:
+            raise ValueError("Exemptionlist must contain exactly one session column")
+        session_column = session_columns[0]
+
+        parameter_columns = []
+        for column, normalized in normalized_columns.items():
+            if column in {study_id_column, session_column}:
+                continue
+            if normalized not in override_actions:
+                raise ValueError(
+                    f"Unknown exemptionlist column {column!r}. "
+                    "Use CLI parameter names without leading '--', e.g. func-frac."
+                )
+            parameter_columns.append((column, normalized, override_actions[normalized]))
+
+        for line_number, row in enumerate(reader, start=2):
+            if row.get(None) and csv_cell_has_value(row.get(None)):
+                raise ValueError(f"Too many columns in exemptionlist line {line_number}")
+
+            if not any(csv_cell_has_value(value) for value in row.values()):
+                continue
+
+            study_id = (row.get(study_id_column) or "").strip()
+            if not study_id:
+                raise ValueError(f"Missing StudyID in exemptionlist line {line_number}")
+            session = (row.get(session_column) or "").strip()
+            if not session:
+                raise ValueError(f"Missing session in exemptionlist line {line_number}")
+
+            exemption_key = (study_id, session)
+            if exemption_key in exemptions:
+                raise ValueError(
+                    f"Duplicate StudyID/session pair {study_id!r}, {session!r} in exemptionlist"
+                )
+
+            overrides = {}
+            for column, normalized, action in parameter_columns:
+                converted = convert_exemption_value(action, row.get(column) or "", column)
+                if converted is not None:
+                    overrides[action.dest] = converted
+            exemptions[exemption_key] = overrides
+
+    return exemptions
+
+
+def get_batch_exemption_keys(all_files):
+    keys = set()
+    for paths in all_files.values():
+        for path in paths:
+            study_id = get_study_id_from_path(path)
+            session = get_session_from_path(path)
+            if study_id and session:
+                keys.add((study_id, session))
+    return keys
+
+
+def validate_exemption_samples(exemptions, all_files):
+    batch_keys = get_batch_exemption_keys(all_files)
+    missing = sorted(set(exemptions) - batch_keys)
+    if missing:
+        missing_labels = [f"{study_id}/{session}" for study_id, session in missing]
+        raise ValueError(
+            "Exemptionlist contains StudyID/session pair(s) that are not part of the current batch: "
+            + ", ".join(missing_labels)
+        )
+
+
+def get_sample_cfg(base_cfg, path, exemptions):
+    study_id = get_study_id_from_path(path)
+    session = get_session_from_path(path)
+    exemption_key = (study_id, session)
+    if exemption_key not in exemptions:
+        return base_cfg
+
+    cfg = dict(base_cfg)
+    cfg.update(exemptions[exemption_key])
+    return cfg
+
+
 TQDM_BAR_FORMAT = (
     "{desc}: {percentage:3.0f}%|{bar}| "
     "{n_fmt}/{total_fmt} done | elapsed {elapsed} | remaining {remaining}"
@@ -682,6 +904,13 @@ if __name__ == "__main__":
         "--slice-time-correction",
         action="store_true",
         help="Enable slice time correction for fMRI"
+    )
+    batch.add_argument(
+        "--exemptionlist",
+        help=(
+            "CSV file with per-StudyID parameter overrides. "
+            "Empty cells keep the normal CLI/default value."
+        )
     )
     # ============================================================
     # CPU / PARALLELIZATION
@@ -973,6 +1202,23 @@ if __name__ == "__main__":
     print()
 
     all_files = findData(pathToData, sessions, data_types)
+    exemptions = {}
+    if args.exemptionlist:
+        try:
+            exemptions = load_exemptionlist(args.exemptionlist, parser)
+            validate_exemption_samples(exemptions, all_files)
+        except ValueError as exc:
+            logging.error("Invalid exemptionlist: %s", exc)
+            parser.error(str(exc))
+
+        print(f"Loaded exemptionlist for {len(exemptions)} StudyID/session pair(s): {args.exemptionlist}")
+        logging.info(
+            "Loaded exemptionlist for %s StudyID/session pair(s): %s",
+            len(exemptions),
+            args.exemptionlist,
+        )
+        for (study_id, session), overrides in sorted(exemptions.items()):
+            logging.info("Exemption parameters for %s/%s: %s", study_id, session, overrides)
 
     num_processes = 1
 
@@ -1026,7 +1272,17 @@ if __name__ == "__main__":
                     bar_format=TQDM_BAR_FORMAT,
                 )
                 with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
-                    futures = [executor.submit(executeScripts, path, key, step, cfg, stc) for path in value]
+                    futures = [
+                        executor.submit(
+                            executeScripts,
+                            path,
+                            key,
+                            step,
+                            get_sample_cfg(cfg, path, exemptions),
+                            stc,
+                        )
+                        for path in value
+                    ]
 
                     # --- collect errors robustly ---
                     flat_errors_step = []
