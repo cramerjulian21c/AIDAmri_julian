@@ -27,11 +27,17 @@ import logging
 import shlex
 import time
 import sys
+import shutil
 
 from helper_tools.timezone_utils import get_local_timezone
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 BATCHPROC_TIMEZONE = get_local_timezone()
+AIDAMRI_GIT_INFO_SOURCES = [
+    "/aida/build/AIDAmri_git_information.txt",
+    "/aida/DATA/AIDAmri_git_information.txt",
+]
+AIDAMRI_GIT_INFO_FILENAME = "AIDAmri_git_information.txt"
 
 
 class BatchProcFormatter(logging.Formatter):
@@ -48,6 +54,20 @@ def configure_logging(log_file_path):
         BatchProcFormatter("%(asctime)s - %(levelname)s - %(message)s")
     )
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
+
+
+def copy_aidamri_git_information_to_proc(proc_dir):
+    """Best-effort copy of build provenance into the processed data folder."""
+    target = os.path.join(proc_dir, AIDAMRI_GIT_INFO_FILENAME)
+    for source in AIDAMRI_GIT_INFO_SOURCES:
+        if not os.path.isfile(source):
+            continue
+        try:
+            if os.path.abspath(source) != os.path.abspath(target):
+                shutil.copyfile(source, target)
+        except OSError:
+            pass
+        return
 
 
 def findData(projectPath, sessions, data_types):
@@ -1172,6 +1192,7 @@ if __name__ == "__main__":
     #configurate the logging module
     log_file_path = os.path.join(pathToData, "batchproc_log.txt")
     configure_logging(log_file_path)
+    copy_aidamri_git_information_to_proc(pathToData)
 
     stc = args.slice_time_correction
 

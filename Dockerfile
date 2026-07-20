@@ -1,4 +1,23 @@
 ARG BASE_IMAGE_PLATFORM=linux/amd64
+
+# Temporary build stage used only to read Git metadata from the build context.
+# The final image copies only the generated text file, not the .git directory.
+FROM --platform=${BASE_IMAGE_PLATFORM} ubuntu:22.04 AS aidamri-git-info
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && \
+	apt-get install -y git && \
+	rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/aidamri-source
+COPY . .
+# Docker builds cannot see the host's global Git config unless callers pass it
+# explicitly. A repo-local git config remains readable through .git/config.
+ARG AIDAMRI_GIT_CONFIG_USER=unknown
+RUN sh install/write_aidamri_git_info.sh /tmp/aidamri-source /tmp/AIDAmri_git_information.txt && \
+	cat /tmp/AIDAmri_git_information.txt
+
 FROM --platform=${BASE_IMAGE_PLATFORM} ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,8 +50,13 @@ RUN wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2
 	make install
 
 # create and switch to working directory
-RUN mkdir /aida/
+RUN mkdir -p /aida/build /aida/DATA
 WORKDIR /aida/
+COPY --from=aidamri-git-info /tmp/AIDAmri_git_information.txt /aida/build/AIDAmri_git_information.txt
+COPY install/aidamri_entrypoint.sh /aida/aidamri_entrypoint.sh
+RUN chmod +x /aida/aidamri_entrypoint.sh
+ENTRYPOINT ["/aida/aidamri_entrypoint.sh"]
+CMD ["/bin/bash"]
 
 # NiftyReg preparation and installation
 RUN apt-get update && apt-get install -y --no-install-recommends \
