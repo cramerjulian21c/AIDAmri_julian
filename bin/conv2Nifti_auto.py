@@ -20,7 +20,8 @@ import sys
 import csv
 import json
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 import nibabel as nii
 import glob as glob
@@ -40,14 +41,14 @@ import io
 
 from helper_tools.plot_sourcedata_niftis import process_subject, write_html_report
 
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
-class CETFormatter(logging.Formatter):
+class BerlinTimeFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
-        timestamp = datetime.fromtimestamp(record.created, CET_TIMEZONE)
+        timestamp = datetime.fromtimestamp(record.created, REPORT_TIMEZONE)
         return (
-            f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+            f"{timestamp.day:02d} {month_name[timestamp.month]} {timestamp.year} "
             f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
         )
 
@@ -608,7 +609,7 @@ if __name__ == "__main__":
     # Configurate Logging-Modul
     log_file_path = os.path.join(sourcedata_dir, "conv2nifti_log.txt")
     log_handler = logging.FileHandler(log_file_path, mode='w')
-    log_handler.setFormatter(CETFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+    log_handler.setFormatter(BerlinTimeFormatter('%(asctime)s - %(levelname)s - %(message)s'))
     logging.basicConfig(level=logging.INFO, handlers=[log_handler], force=True)
     
     # get list of raw data in input folder

@@ -183,8 +183,8 @@ Options:
 
 ## Quality Control and Data Summaries
 
-Generated report timestamps use the fixed format
-`YYYY-Month-DD HH:MM:SS CET`, for example `2026-July-15 15:14:12 CET`.
+Generated report timestamps use German local time in the format
+`DD Month YYYY HH:MM:SS CET/CEST`, for example `15 July 2026 15:14:12 CEST`.
 
 ### `adjustbvecRep.py`
 

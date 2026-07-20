@@ -83,6 +83,8 @@ The current `Dockerfile` builds an AMD64 Ubuntu 22.04 image with Python 3.10 in
 a virtual environment at `/opt/env`. The image includes FSL 5.0.11, NiftyReg
 from the pinned CBSI commit `83d8d1182ed4c227ce4764f1fdab3b1797eecd8d`,
 DSI Studio `2025.04.16`, ANTs `2.6.2`, `bet4animal`, and `immv`.
+Generated timestamps use German local time and are written as
+`DD Month YYYY HH:MM:SS CET/CEST`.
 
 Python dependencies are installed from `requirements.txt` with resolved package
 versions constrained by `constraints.txt`. During the Docker build, repository

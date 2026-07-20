@@ -1,8 +1,9 @@
 import os
 import argparse
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
@@ -15,7 +16,7 @@ import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
 
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 def _display_geometry(img_slice, orientation, zooms):
     if orientation == "Axial":
@@ -187,9 +188,9 @@ def process_subject(subject_dir, out_dir, n_slices=10):
     return report_entries
 
 def _report_timestamp():
-    timestamp = datetime.now(CET_TIMEZONE)
+    timestamp = datetime.now(REPORT_TIMEZONE)
     return (
-        f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+        f"{timestamp.day:02d} {month_name[timestamp.month]} {timestamp.year} "
         f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
     )
 
