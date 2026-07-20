@@ -4,7 +4,7 @@
 
 Julian Cramer, Aref Kalantari, Leon Scharwächter, Niklas Pallast, Michael Diedenhofen, Victor Vera Frazão, Marc Schneider, Markus Aswendt
 
-**Status:** May 2026
+**Status:** July 2026
 
 Department of Neurology, University Hospital Frankfurt, Germany
 
@@ -117,6 +117,8 @@ Converts raw MRI data into the BIDS structure and NIfTI format, including all ne
 
 AIDAmri is distributed as a Docker image. Docker is a platform that allows you to run applications in isolated environments called containers. This means that all the software dependencies and configurations needed to run AIDAmri are included in the Docker image, making it easier to set up and use the pipeline without worrying about compatibility issues.
 
+The current Docker image is based on Ubuntu 22.04 and runs Python 3.10 in a virtual environment at `/opt/env`. It includes FSL 5.0.11, NiftyReg from the pinned commit `83d8d1182ed4c227ce4764f1fdab3b1797eecd8d`, DSI Studio 2025.04.16, ANTs 2.6.2, `bet4animal` and `immv`. Python packages are installed from `requirements.txt` with reproducible version constraints from `constraints.txt`.
+
 <h3 id="prerequisites">Prerequisites <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The following are required to launch your AIDAmri instance:
@@ -199,6 +201,30 @@ The created image is a template for running containers and instantiating the pip
 
 The `-t` flag sets the name and tag of the image. In this example, it is called `aidamri` and tagged `latest`. You may change the name and tag, but remember to change them accordingly in later steps that invoke the image. The `-f` flag refers to the `Dockerfile` in the current directory.
 
+<details>
+<summary><strong>Side note: source information stored in the Docker image</strong></summary>
+
+During the Docker build, AIDAmri writes repository provenance information to `/aida/build/AIDAmri_git_information.txt` inside the image. The file records the Git commit, branch, whether the build context had uncommitted changes, the commit author and the project Git user when available. Most users do not need to change anything here.
+
+If you want the Docker build to include your local Git user name, pass it explicitly:
+
+```text
+docker build \
+  --build-arg AIDAMRI_GIT_CONFIG_USER="$(git config user.name)" \
+  -t aidamri:latest \
+  -f Dockerfile .
+```
+
+When a container starts and `/aida/DATA` exists, the entrypoint copies this information to:
+
+```text
+/aida/DATA/AIDAmri_git_information.txt
+```
+
+This information will help you to identify the source of the AIDAmri version used for processing, even if you later update the Git repository or rebuild the image.
+
+</details>
+
 You only need to build the Docker image once during the initial installation.
 
 After updating the GitHub repository, for example with `git pull`, you should rebuild the image so that the new code is included.
@@ -269,6 +295,8 @@ You are now inside the running AIDAmri container.
 
 From here, you can use the AIDAmri commands described in the usage sections.
 
+The container entrypoint copies the build provenance file into `/aida/DATA` at startup. `batchProc.py` also copies available AIDAmri Git information into the processed project folder so batch outputs remain linked to the image/source revision used for processing.
+
 As a first test, change into the `bin/` folder and open the help page of the batch processing script:
 
 ```text
@@ -305,7 +333,7 @@ List of functions and script groups:
 - `3.3_fMRIActivity/`: rs-fMRI activity and connectivity analysis, including seed ROI creation, regression tables, mean time-series extraction, correlation matrices and matrix plotting.
 - `4.1_T2mapPreProcessing/`: T2 map preprocessing, atlas registration and extraction of region-wise T2 map values.
 - `5.1_ROI_analysis/`: ROI-based analyses for user-defined regions, for example peri-infarct regions around stroke lesions, including mask dilation, transform application, seed ROI creation and ROI inspection.
-- `helper_tools/`: additional utilities for data preparation and quality control, including naming cleanup, batch reorientation, fieldmap JSON updates, stroke mask distribution, source-data plotting and atlas region size summaries.
+- `helper_tools/`: additional utilities for data preparation and quality control, including naming cleanup, batch reorientation, fieldmap JSON updates, stroke mask distribution, source-data plotting, atlas region size summaries and QC report helpers.
 - `helper_tools/adjustbvecRep.py`: helper for adjusting repeated b-vector files in DTI datasets.
 
 All program examples are listed only with the mandatory input parameters. For more details or help, call:
@@ -368,7 +396,7 @@ projectfolder/sub-/ses-/datatype
 ```
 
 > [!WARNING]
-> Batch processing may slow down the system depending on the CPU load-out. Use `-c/--cpu-cores` to set presets or explicit process counts, or `-p/--cpu-percent` to set a percentage of available CPU cores, for example `50` or `50%`. Run `python batchProc.py -h` for more information.
+> Batch processing may slow down the system depending on the CPU load-out. Use `-c/--cpu-cores` to set presets or explicit process counts, or `-p/--cpu-percent` to set a percentage of available CPU cores, for example `50` or `50%`. `batchProc.py` writes a `batchproc_log.txt` file and copies available AIDAmri Git provenance information into the processed project folder. Run `python batchProc.py -h` for more information.
 
 Example:
 
