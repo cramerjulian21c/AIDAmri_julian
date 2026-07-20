@@ -17,7 +17,8 @@ python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 import os
 import fnmatch
 import csv
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import concurrent.futures
 import subprocess
@@ -29,10 +30,8 @@ import time
 import sys
 import shutil
 
-from helper_tools.timezone_utils import get_local_timezone
-
 FATAL_LIP_HEADER_EXIT_CODE = 86
-BATCHPROC_TIMEZONE = get_local_timezone()
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
 AIDAMRI_GIT_INFO_SOURCES = [
     "/aida/build/AIDAmri_git_information.txt",
     "/aida/DATA/AIDAmri_git_information.txt",
@@ -42,10 +41,11 @@ AIDAMRI_GIT_INFO_FILENAME = "AIDAmri_git_information.txt"
 
 class BatchProcFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
-        timestamp = datetime.fromtimestamp(record.created, BATCHPROC_TIMEZONE)
-        if datefmt:
-            return timestamp.strftime(datefmt)
-        return timestamp.strftime("%Y-%m-%d %H:%M:%S,%f")[:-3] + f" {timestamp.tzname()}"
+        timestamp = datetime.fromtimestamp(record.created, CET_TIMEZONE)
+        return (
+            f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+            f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
+        )
 
 
 def configure_logging(log_file_path):
