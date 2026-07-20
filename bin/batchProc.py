@@ -18,8 +18,9 @@ import os
 import fnmatch
 import csv
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import concurrent.futures
 import subprocess
 from tqdm import tqdm
@@ -31,7 +32,7 @@ import sys
 import shutil
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 AIDAMRI_GIT_INFO_SOURCES = [
     "/aida/build/AIDAmri_git_information.txt",
     "/aida/DATA/AIDAmri_git_information.txt",
@@ -41,9 +42,9 @@ AIDAMRI_GIT_INFO_FILENAME = "AIDAmri_git_information.txt"
 
 class BatchProcFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
-        timestamp = datetime.fromtimestamp(record.created, CET_TIMEZONE)
+        timestamp = datetime.fromtimestamp(record.created, REPORT_TIMEZONE)
         return (
-            f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+            f"{timestamp.day:02d} {month_name[timestamp.month]} {timestamp.year} "
             f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
         )
 

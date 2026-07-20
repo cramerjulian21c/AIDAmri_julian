@@ -16,9 +16,10 @@ import numpy as np
 import nibabel as nib
 
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 # directories
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -136,8 +137,8 @@ for path in (path_label_names_2000, path_labels, path_labels_1, path_labels_2, p
         sys.exit("Error: '%s' is not a regular file." % (path,))
 
 def get_date():
-    now = datetime.now(CET_TIMEZONE)
-    return f"{now.year}-{month_name[now.month]}-{now.day:02d} {now:%H:%M:%S} {now.tzname()}"
+    now = datetime.now(REPORT_TIMEZONE)
+    return f"{now.day:02d} {month_name[now.month]} {now.year} {now:%H:%M:%S} {now.tzname()}"
 
 def read_csv(filename):
     if not os.path.isfile(filename):

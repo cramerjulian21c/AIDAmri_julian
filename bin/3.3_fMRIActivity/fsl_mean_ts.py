@@ -17,9 +17,10 @@ import scipy.io as io
 import correlate_matrix
 
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
 def parse_label_line(line):
@@ -130,8 +131,8 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
 
 
 def get_date():
-    now = datetime.now(CET_TIMEZONE)
-    return f"{now.year}-{month_name[now.month]}-{now.day:02d} {now:%H:%M:%S} {now.tzname()}"
+    now = datetime.now(REPORT_TIMEZONE)
+    return f"{now.day:02d} {month_name[now.month]} {now.year} {now:%H:%M:%S} {now.tzname()}"
 
 
 if __name__ == '__main__':

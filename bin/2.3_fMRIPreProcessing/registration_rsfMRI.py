@@ -15,19 +15,20 @@ import subprocess
 import shlex
 import logging
 from calendar import month_name
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 LOGGER = logging.getLogger(__name__)
 DISABLE_LOG_ENV = "AIDAMRI_DISABLE_SCRIPT_LOG"
-CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
-class CETFormatter(logging.Formatter):
+class BerlinTimeFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
-        timestamp = datetime.fromtimestamp(record.created, CET_TIMEZONE)
+        timestamp = datetime.fromtimestamp(record.created, REPORT_TIMEZONE)
         return (
-            f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+            f"{timestamp.day:02d} {month_name[timestamp.month]} {timestamp.year} "
             f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
         )
 
@@ -36,7 +37,7 @@ def setup_logging(outfile):
     handlers = [logging.StreamHandler()]
     if os.environ.get(DISABLE_LOG_ENV) != "1":
         handlers.append(logging.FileHandler(os.path.join(outfile, "registration.log"), mode="w"))
-    formatter = CETFormatter("%(asctime)s %(levelname)s: %(message)s")
+    formatter = BerlinTimeFormatter("%(asctime)s %(levelname)s: %(message)s")
     for handler in handlers:
         handler.setFormatter(formatter)
     logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
