@@ -15,7 +15,10 @@ import os
 import sys
 import numpy as np
 import nibabel as nib
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
+
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 DEFAULT_SIGMA_LABEL_FILE = os.path.join(
@@ -163,10 +166,8 @@ def startSeedPoint(in_labels,in_atlas):
 
 
 def get_date():
-    now = datetime.now()
-    pvDate = now.strftime("%a %d %b %Y")
-    pvTime = now.strftime("%H:%M:%S")
-    return pvDate + ' ' + pvTime
+    now = datetime.now(CET_TIMEZONE)
+    return f"{now.year}-{month_name[now.month]}-{now.day:02d} {now:%H:%M:%S} {now.tzname()}"
 
 def read_csv(sFilename):
     fid = open(sFilename)

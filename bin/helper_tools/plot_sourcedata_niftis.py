@@ -1,6 +1,7 @@
 import os
 import argparse
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -13,6 +14,8 @@ matplotlib.use("Agg")
 import nibabel as nib
 import numpy as np
 import matplotlib.pyplot as plt
+
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
 
 def _display_geometry(img_slice, orientation, zooms):
     if orientation == "Axial":
@@ -184,7 +187,11 @@ def process_subject(subject_dir, out_dir, n_slices=10):
     return report_entries
 
 def _report_timestamp():
-    return datetime.now().strftime("%d-%m-%Y %H:%M:%S Uhr")
+    timestamp = datetime.now(CET_TIMEZONE)
+    return (
+        f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+        f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
+    )
 
 def write_html_report(report_entries, out_dir):
     # Try to extract subject and session IDs from the first entry's filename path
