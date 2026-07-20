@@ -154,6 +154,7 @@ Key behavior:
 - Writes a log file into the output root.
 - If every NIfTI already matches the target orientation, the script logs this
   and aborts before copying the whole tree.
+- Processes files in parallel. By default, it uses `50%` of available CPU cores.
 
 Usage:
 
@@ -177,8 +178,13 @@ Options:
 - `-n`: non-interactive mode. Requires `-t`.
 - `-l LOGFILE`: log filename written into the output root. Default:
   `reorient_log.txt`.
+- `-p`, `--cpu-percent`: CPU percentage for parallel processing, for example
+  `50` or `50%`. Default: `50`.
 
 ## Quality Control and Data Summaries
+
+Generated report timestamps use the fixed format
+`YYYY-Month-DD HH:MM:SS CET`, for example `2026-July-15 15:14:12 CET`.
 
 ### `adjustbvecRep.py`
 
