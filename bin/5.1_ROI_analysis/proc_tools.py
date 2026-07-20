@@ -14,7 +14,10 @@ import sys
 import numpy as np
 import nibabel as nib
 
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
+
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
 
 # directories
 lib_in_dir = r'C:\Users\Public\Linux\shared_folder\AIDAmri\lib'
@@ -150,11 +153,8 @@ if not os.path.isfile(path_labels_2):
     sys.exit("Error: '%s' is not a regular file." % (path_labels_2,))
 
 def get_date():
-    now = datetime.now()
-    pvDate = now.strftime("%a %d %b %Y")
-    pvTime = now.strftime("%H:%M:%S")
-
-    return pvDate + ' ' + pvTime
+    now = datetime.now(CET_TIMEZONE)
+    return f"{now.year}-{month_name[now.month]}-{now.day:02d} {now:%H:%M:%S} {now.tzname()}"
 
 def read_csv(filename):
     if not os.path.isfile(filename):

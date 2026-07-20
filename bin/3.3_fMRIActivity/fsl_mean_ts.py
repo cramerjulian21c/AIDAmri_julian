@@ -16,7 +16,11 @@ import nibabel as nib
 import scipy.io as io
 import correlate_matrix
 
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
+
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
+
 def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
     # input data
 
@@ -81,10 +85,8 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
 
 
 def get_date():
-    now = datetime.now()
-    pvDate = now.strftime("%a %d %b %Y")
-    pvTime = now.strftime("%H:%M:%S")
-    return pvDate + ' ' + pvTime
+    now = datetime.now(CET_TIMEZONE)
+    return f"{now.year}-{month_name[now.month]}-{now.day:02d} {now:%H:%M:%S} {now.tzname()}"
 
 
 if __name__ == '__main__':

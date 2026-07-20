@@ -1,7 +1,8 @@
 import html
 import logging
 import os
-from datetime import datetime
+from calendar import month_name
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -15,9 +16,7 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 
-from helper_tools.timezone_utils import get_local_timezone
-
-REPORT_TIMEZONE = get_local_timezone()
+CET_TIMEZONE = timezone(timedelta(hours=1), "CET")
 
 
 def _as_3d(data):
@@ -206,7 +205,11 @@ def _format_parameter_value(value):
 
 
 def _report_timestamp():
-    return datetime.now(REPORT_TIMEZONE).strftime("%d-%m-%Y %H:%M:%S Uhr (%Z)")
+    timestamp = datetime.now(CET_TIMEZONE)
+    return (
+        f"{timestamp.year}-{month_name[timestamp.month]}-{timestamp.day:02d} "
+        f"{timestamp:%H:%M:%S} {timestamp.tzname()}"
+    )
 
 
 def _write_report(entries, out_dir, title, report_name, custom_parameters=None):
