@@ -201,9 +201,10 @@ def fsl_slicetimeCorrector(input_file, costum_timings, slice_order, TR):
     return output_file
 
 
-def filterFSL(input_file,highpass,tempMean):
+def filterFSL(input_file,highpass,lowpass,tempMean):
     outputSFRGR = os.path.join(os.path.dirname(input_file), os.path.basename(input_file).split('SRGR')[0])+'SFRGR.nii.gz'
-    myHP = fsl.TemporalFilter(in_file = input_file,highpass_sigma=highpass, args='-add '+tempMean,out_file=outputSFRGR)
+    myHP = fsl.TemporalFilter(in_file=input_file, highpass_sigma=highpass, lowpass_sigma=lowpass,
+                              args='-add '+tempMean, out_file=outputSFRGR)
     print(myHP.cmdline)
     myHP.run()
     input_file = outputSFRGR
@@ -217,7 +218,7 @@ def filterFSL(input_file,highpass,tempMean):
 
 
 #adjust default parameters if needed
-def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
+def startRegression(input_File, FWHM=8.0, TR=1.0, stc=False,
                     slice_order=None, costum_timings=None,
                     mask_file=None):
     # generate folder regr images
@@ -281,7 +282,6 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
     # get mean of masked regr-Dataset
     mean_func = getMean(thresRegr_file,'mean_func')
 
-    # FWHM = 3.0
     # sigma = FWHM/(2 * np.sqrt(2 * np.log(2))) = 1.27
     srgr_file = applySusan(thresRegr_file,meanintensity,FWHM,mean_func)
 
@@ -295,10 +295,13 @@ def startRegression(input_File, FWHM=3.0, cutOff_sec=100.0, TR=1.0, stc=False,
     # mean of scaled Dataset
     tempMean  =  getMean(intnormSrgr_file,'tempMean')
 
-    # filter image cut-off frequency 0.01 Hz
-    highpass = (cutOff_sec / (2.0 * TR))
+    # bandpass filter image from 0.01 to 0.2 Hz
+    bandpass_low_hz = 0.01
+    bandpass_high_hz = 0.2
+    highpass = (1.0 / bandpass_low_hz) / (2.0 * TR)
+    lowpass = (1.0 / bandpass_high_hz) / (2.0 * TR)
     #highpass = 17.6056338028
-    filtered_image = filterFSL(intnormSrgr_file,highpass,tempMean)
+    filtered_image = filterFSL(intnormSrgr_file,highpass,lowpass,tempMean)
 
     print('Regression completed!')
     return regr_FileReal, srgr_file ,filtered_image

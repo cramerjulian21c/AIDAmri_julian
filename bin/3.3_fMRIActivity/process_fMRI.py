@@ -392,9 +392,8 @@ def startProcess(
 
 if __name__ == "__main__":
 
-    TR = 1
-    cutOff_sec = 100.0
-    FWHM = 3.0
+    TR = 1.0 # all samples have TR = 1s
+    FWHM = 8.0 #bc of rat
 
     import argparse
     parser = argparse.ArgumentParser(description='Process fMRI data')
@@ -402,12 +401,14 @@ if __name__ == "__main__":
     requiredNamed.add_argument('-i', '--input', help='Path to the BET NIFTI', required=True)
 
     parser.add_argument('-t', '--TR', default=TR, type=float, help='Current TR value')
-    parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, type=float, help='High-pass filter cutoff sec')
     parser.add_argument('-f', '--FWHM', default=FWHM, type=float, help='Full width at half maximum')
     parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
     parser.add_argument('--bet-file', default=None, help='Existing func/*Bet.nii.gz file to reuse when auto-detection is ambiguous')
 
     args = parser.parse_args()
+
+    TR = args.TR
+    FWHM = args.FWHM
 
     if args.slicetimecorrection == "True":
         stc = True
@@ -448,11 +449,12 @@ if __name__ == "__main__":
 
         with open(meta_data_file, "r") as infile:
             meta_data = json.load(infile)
-            
-        TR = meta_data["RepetitionTime"] / 1000
-        slice_order = meta_data["ObjOrderList"]
-        n_slices = meta_data["n_slices"]
-        costum_timings = meta_data["costum_timings"]
+
+
+        slice_timing = meta_data["SliceTiming"]
+        slice_order = [index + 1 for index in sorted(range(len(slice_timing)), key=lambda index: slice_timing[index])]
+        n_slices = len(slice_timing)
+        costum_timings = [timing / TR for timing in slice_timing]
 
         # create costum timings txt file
         costum_timings_path = os.path.join(Path(meta_data_file).parent, "tcostum.txt")
@@ -464,12 +466,11 @@ if __name__ == "__main__":
         
         rgr_file, srgr_file, sfrgr_file = regress.startRegression(
             mcfFile_name,
-            FWHM,
-            cutOff_sec,
-            TR,
-            stc,
-            slice_order_path,
-            costum_timings_path,
+            FWHM=FWHM,
+            TR=TR,
+            stc=stc,
+            slice_order=slice_order_path,
+            costum_timings=costum_timings_path,
             mask_file=mask_file
         )
 
@@ -481,10 +482,9 @@ if __name__ == "__main__":
         print("Starting Regression without slice time correction:")
         rgr_file, srgr_file, sfrgr_file = regress.startRegression(
             mcfFile_name,
-            FWHM,
-            cutOff_sec,
-            TR,
-            stc,
+            FWHM=FWHM,
+            TR=TR,
+            stc=stc,
             mask_file=mask_file
         )
         print(f"sfrgr_file {sfrgr_file}")
