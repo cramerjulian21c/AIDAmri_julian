@@ -402,7 +402,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-t', '--TR', default=TR, type=float, help='Current TR value')
     parser.add_argument('-f', '--FWHM', default=FWHM, type=float, help='Full width at half maximum')
-    parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
+    parser.add_argument('-stc', '--slicetimecorrection', action='store_true', help='perform slice time correction')
     parser.add_argument('--bet-file', default=None, help='Existing func/*Bet.nii.gz file to reuse when auto-detection is ambiguous')
 
     args = parser.parse_args()
@@ -410,10 +410,7 @@ if __name__ == "__main__":
     TR = args.TR
     FWHM = args.FWHM
 
-    if args.slicetimecorrection == "True":
-        stc = True
-    else:
-        stc = False
+    stc = args.slicetimecorrection
 
     sigma_labels = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
     labels = sigma_labels
