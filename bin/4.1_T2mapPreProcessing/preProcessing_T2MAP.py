@@ -185,10 +185,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '-b',
         '--bias-method',
-        choices=["none", "mico"],
+        choices=["skip", "mico"],
         type=str.lower,
         default="mico",
-        help='Biasfield correction method for T2map: none or mico. Default: mico'
+        help='Biasfield correction method for T2map: skip or mico. Default: mico'
     )
     parser.add_argument('-c', '--center', nargs=3, type=float, default=None, help='BET center as x y z')
     args = parser.parse_args()
@@ -221,7 +221,7 @@ if __name__ == "__main__":
         raise
 
     # intensity correction using non parametric bias field correction algorithm
-    if bias_method == "none":
+    if bias_method == "skip":
         print("No bias field correction applied")
         outputBiasCorr = output_smooth
     elif bias_method == "mico":
@@ -247,4 +247,3 @@ if __name__ == "__main__":
             center=args.center,
         )
     print("Brainextraction was successful")
-

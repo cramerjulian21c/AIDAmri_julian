@@ -126,18 +126,18 @@ def n4biasfieldcorr(input_file):
     return output_file
 
 
-def smoothIMG(input_file,outputPath):
+def smoothIMG(input_file, outputPath, skip_smoothing=False):
     """
-    Prepare a 3D image for smoothing and apply FSL's median spatial filter.
-    For 4D inputs, a voxel-wise minimum projection across the 4th dimension is
-    written as *MP.nii.gz before smoothing. For 3D inputs, the MP image is just
-    a float32/header-normalized copy.
+    Prepare a 3D reference image and optionally apply FSL's median spatial filter.
+    For 4D inputs, a voxel-wise median projection across the 4th dimension is
+    written as *MP.nii.gz. For 3D inputs, the MP image is just a
+    float32/header-normalized copy.
     """
     source_base = os.path.basename(input_file).split('.')[0]
     data = nib.load(input_file)
     vol = data.get_fdata(dtype=np.float32)
     if vol.ndim == 4:
-        ImgSmooth = np.min(vol, axis=3).astype(np.float32)
+        ImgSmooth = np.median(vol, axis=3).astype(np.float32)
         source_base = source_base + 'MP'
     elif vol.ndim == 3:
         ImgSmooth = vol.astype(np.float32)
@@ -155,6 +155,11 @@ def smoothIMG(input_file,outputPath):
     # hdrOut['sform_code'] = 1
     nib.save(unscaledNiiData, output_file)
     input_file = output_file
+
+    if skip_smoothing:
+        print("Spatial smoothing skipped")
+        return input_file
+
     #output_file =  os.path.join(os.path.dirname(input_file),os.path.basename(input_file).split('.')[0] + 'Smooth.nii.gz')
     output_file = os.path.join(outputPath, source_base + 'Smooth.nii.gz')
     myGauss =  fsl.SpatialFilter(in_file=input_file,out_file=output_file,operation='median',kernel_shape='box',kernel_size=0.1)
@@ -219,10 +224,15 @@ if __name__ == "__main__":
     parser.add_argument(
         '-b',
         '--bias-method',
-        help='Biasfield correction method - default=None, other options are "ants" or "none"',
-        choices=["none", "ants"],
+        help='Biasfield correction method - default=None, other options are "ants" or "skip"',
+        choices=["skip", "ants"],
         type=str.lower,
         default=None,
+    )
+    parser.add_argument(
+        '--skip-smoothing',
+        action='store_true',
+        help='Skip the FSL spatial median smoothing step; still creates the 3D median reference image'
     )
     args = parser.parse_args()
 
@@ -247,9 +257,9 @@ if __name__ == "__main__":
     create_brkraw_backup(inputFile)
     header_check(inputFile)
 
-    outputSmooth = smoothIMG(input_file=inputFile,outputPath=outputPath)
+    outputSmooth = smoothIMG(input_file=inputFile, outputPath=outputPath, skip_smoothing=args.skip_smoothing)
 
-    if bias_method is None or bias_method == "none":
+    if bias_method is None or bias_method == "skip":
         print("No bias field correction applied")
         outputBiasCorr = outputSmooth
     elif bias_method == "ants":

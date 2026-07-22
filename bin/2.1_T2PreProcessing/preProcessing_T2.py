@@ -200,8 +200,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '-b',
         '--bias-method',
-        help='Biasfield correction method - default="mico", other options are "ants" or "none"',
-        choices = ["none", "mico", "ants"],
+        help='Biasfield correction method - default="mico", other options are "ants" or "skip"',
+        choices = ["skip", "mico", "ants"],
         type=str.lower,
         default="mico",
     )
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     header_check(input_file)
 
     #intensity correction using non parametric bias field correction algorithm
-    if bias_method == "none":
+    if bias_method == "skip":
         print("No bias field correction applied")
         outputBiasCorr = input_file
     elif bias_method == "mico":
