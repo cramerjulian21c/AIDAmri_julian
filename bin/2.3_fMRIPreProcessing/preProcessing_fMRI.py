@@ -224,8 +224,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '-b',
         '--bias-method',
-        help='Biasfield correction method - default=None, other options are "ants" or "none"',
-        choices=["none", "ants"],
+        help='Biasfield correction method - default=None, other options are "ants" or "skip"',
+        choices=["skip", "ants"],
         type=str.lower,
         default=None,
     )
@@ -259,7 +259,7 @@ if __name__ == "__main__":
 
     outputSmooth = smoothIMG(input_file=inputFile, outputPath=outputPath, skip_smoothing=args.skip_smoothing)
 
-    if bias_method is None or bias_method == "none":
+    if bias_method is None or bias_method == "skip":
         print("No bias field correction applied")
         outputBiasCorr = outputSmooth
     elif bias_method == "ants":
