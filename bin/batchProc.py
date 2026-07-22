@@ -14,6 +14,7 @@ Example:
 python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 """
 
+import argparse
 import os
 import fnmatch
 import csv
@@ -202,7 +203,7 @@ def run_subprocess(command, datatype, step, anat_process=False):
         raise
     
 
-def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
+def executeScripts(currentPath_wData, dataFormat, step, cfg):
     # For every datatype (T2w, fMRI, DTI), go in all days/group/subjects folders
     # and execute the respective (pre-)processing/registration-scripts.
     # If a certain file does not exist, a note will be created in the errorList.
@@ -222,10 +223,11 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_T2.py -i {_quote(currentFile[0])}'
 
                     # Bias field correction for T2: none | mico | ants
-                    if cfg.get("t2_bias_method"):
+                    if cfg.get("t2_bias_method") is not None:
                         command += f' -b {cfg["t2_bias_method"]}'
 
-                    command += f' --bet {cfg["t2_bet"]}'
+                    if cfg.get("t2_bet") is not None:
+                        command += f' --bet {cfg["t2_bet"]}'
 
                     # BET-Parameter
                     if cfg.get("t2_frac") is not None:
@@ -292,9 +294,10 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                     command = f'python preProcessing_fMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_bias_method") is not None:
                         command += f' -b {cfg["func_bias_method"]}'
-                    if cfg.get("func_skip_smoothing"):
+                    if cfg.get("func_skip_smoothing") is True:
                         command += ' --skip-smoothing'
-                    command += f' --bet {cfg["func_bet"]}'
+                    if cfg.get("func_bet") is not None:
+                        command += f' --bet {cfg["func_bet"]}'
                     if cfg.get("func_frac") is not None:
                         command += f' -f {cfg["func_frac"]}'
                     if cfg.get("func_radius") is not None:
@@ -317,7 +320,7 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
-                    if cfg.get("func_atlas_mask_t2"):
+                    if cfg.get("func_atlas_mask_t2") is True:
                         command += " --atlas-mask-t2"
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
@@ -331,7 +334,9 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*Bet.nii.gz"))
                 if len(currentFile)>0:
                     os.chdir(os.path.join(cwd, '3.3_fMRIActivity'))
-                    command = f'python process_fMRI.py -i {_quote(currentFile[0])} -stc {stc}'
+                    command = f'python process_fMRI.py -i {_quote(currentFile[0])}'
+                    if cfg.get("func_stc") is True:
+                        command += ' -stc'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -346,9 +351,10 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 currentFile = sorted(currentPath_wData.glob("*MEMS.nii.gz"))
                 if len(currentFile)>0:
                     command = f'python preProcessing_T2MAP.py -i {_quote(currentFile[0])}'
-                    if cfg.get("t2map_bias_method"):
+                    if cfg.get("t2map_bias_method") is not None:
                         command += f' -b {cfg["t2map_bias_method"]}'
-                    command += f' --bet {cfg["t2map_bet"]}'
+                    if cfg.get("t2map_bet") is not None:
+                        command += f' --bet {cfg["t2map_bet"]}'
                     if cfg.get("t2map_frac") is not None:
                         command += f' -f {cfg["t2map_frac"]}'
                     if cfg.get("t2map_radius") is not None:
@@ -412,20 +418,20 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                         command += f' -g {cfg["dwi_gradient"]}'
 
                     # Bias field
-                    # dwi_bias_method with choices ["mico",“ants”], default=None
                     if cfg.get("dwi_bias_method") is not None:
                         command += f' -b {cfg["dwi_bias_method"]}'
 
                     # Denoiser
-                    if cfg.get("dwi_denoiser"):
+                    if cfg.get("dwi_denoiser") is not None:
                         command += f' --denoiser {cfg["dwi_denoiser"]}'
 
-                    command += f' --bet {cfg["dwi_bet"]}'
+                    if cfg.get("dwi_bet") is not None:
+                        command += f' --bet {cfg["dwi_bet"]}'
 
-                    if cfg.get("dwi_average_b0"):
+                    if cfg.get("dwi_average_b0") is True:
                         command += ' --average-b0'
 
-                    if cfg.get("dwi_skip_smoothing"):
+                    if cfg.get("dwi_skip_smoothing") is True:
                         command += ' --skip-smoothing'
 
                     result = run_subprocess(command, dataFormat, step)
@@ -456,33 +462,36 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg, stc=False):
                 # Appends optional (fa0, nii_gz) flags to DTI main process if passed
                 if len(currentFile)>0:
                     # Pull values from cfg (with defaults)
-                    track_param = cfg.get("dsi_track_param", "default")
-                    if isinstance(track_param, (list, tuple)):
-                        track_param_args = ' '.join(_quote(item) for item in track_param)
-                    else:
-                        track_param_args = _quote(track_param)
-                    recon_method = cfg.get("dsi_recon_method", "dti")
-                    vivo = cfg.get("dsi_vivo", "in_vivo")
-                    make_iso = cfg.get("dsi_make_isotropic", "0")
-                    b_table = cfg.get("dsi_b_table", "auto")
                     optional = cfg.get("dsi_optional")
                     thread_count = cfg.get("num_processes", 1)
-                    legacy = bool(cfg.get("dsi_legacy", False))
-                    skip_motion_correction = bool(cfg.get("dsi_skip_motion_correction", False))
 
                     cli_str = (
                         f'dsi_main.py -i {_quote(currentFile[0])} '
-                        f'-b {_quote(b_table)} '
-                        f'-t {track_param_args} -r {_quote(recon_method)} '
-                        f'-v {_quote(vivo)} -m {_quote(make_iso)} '
                         f'--thread-count {thread_count}'
                     )
-                    if legacy:
+                    if cfg.get("dsi_b_table") is not None:
+                        cli_str += f' -b {_quote(cfg["dsi_b_table"])}'
+                    if cfg.get("dsi_track_param") is not None:
+                        track_param = cfg["dsi_track_param"]
+                        if isinstance(track_param, (list, tuple)):
+                            track_param_args = ' '.join(_quote(item) for item in track_param)
+                        else:
+                            track_param_args = _quote(track_param)
+                        cli_str += f' -t {track_param_args}'
+                    if cfg.get("dsi_recon_method") is not None:
+                        cli_str += f' -r {_quote(cfg["dsi_recon_method"])}'
+                    if cfg.get("dsi_vivo") is not None:
+                        cli_str += f' -v {_quote(cfg["dsi_vivo"])}'
+                    if cfg.get("dsi_make_isotropic") is not None:
+                        cli_str += f' -m {_quote(cfg["dsi_make_isotropic"])}'
+                    if cfg.get("dsi_legacy") is True:
                         cli_str += ' -l'
-                    if skip_motion_correction:
+                    if cfg.get("dsi_skip_motion_correction") is True:
                         cli_str += ' --skip-motion-correction'
-                    if optional:
-                        cli_str += ' -o ' + ' '.join(_quote(item) for item in optional)
+                    if optional is not None:
+                        cli_str += ' -o'
+                        if len(optional) > 0:
+                            cli_str += ' ' + ' '.join(_quote(item) for item in optional)
 
                     os.chdir(cwd + '/3.2_DTIConnectivity')
                     command = f'python {cli_str}'
@@ -610,7 +619,6 @@ NON_SAMPLE_OVERRIDE_DESTS = {
     "cpu_cores",
     "cpu_percent",
     "exemptionlist",
-    "slice_time_correction",
 }
 
 
@@ -828,8 +836,6 @@ TQDM_BAR_FORMAT = (
 )
 
 if __name__ == "__main__":
-    import argparse
-
     def parse_cpu_percent(value):
         cpu_count = multiprocessing.cpu_count()
         value = str(value).strip()
@@ -913,11 +919,6 @@ if __name__ == "__main__":
         help="Processing steps to run (preprocess registration process). Default: all"
     )
     batch.add_argument(
-        "--slice-time-correction",
-        action="store_true",
-        help="Enable slice time correction for fMRI"
-    )
-    batch.add_argument(
         "--exemptionlist",
         help=(
             "CSV file with per-StudyID parameter overrides. "
@@ -947,17 +948,15 @@ if __name__ == "__main__":
     t2 = parser.add_argument_group("T2 preprocessing (preProcessing_T2.py)")
     t2.add_argument(
         "--t2-bias-method",
-        choices=["none", "mico", "ants"],
+        choices=["skip", "mico", "ants"],
         type=str.lower,
-        default = "mico",
-        help="Bias field correction method for T2 (none, mico or ants). Default: mico"
+        help="Bias field correction method for T2; omitted uses preProcessing_T2.py default"
     )
     t2.add_argument(
         "--t2-bet",
         choices=["skip", "bet", "bet4animal"],
         type=str.lower,
-        default="bet",
-        help="Brain extraction method for T2: skip, bet or bet4animal. Default: bet"
+        help="Brain extraction method for T2; omitted uses preProcessing_T2.py default"
     )
 
     t2.add_argument(
@@ -1002,18 +1001,19 @@ if __name__ == "__main__":
     dwi.add_argument(
         "--dwi-average-b0",
         action="store_true",
+        default=None,
         help="Average b0 volumes before DWI processing"
     )
     dwi.add_argument(
         "--dwi-bet",
         choices=["skip", "bet", "bet4animal"],
         type=str.lower,
-        default="bet",
-        help="Brain extraction method for DWI: skip, bet or bet4animal. Default: bet"
+        help="Brain extraction method for DWI; omitted uses preProcessing_DTI.py default"
     )
     dwi.add_argument(
         "--dwi-skip-smoothing",
         action="store_true",
+        default=None,
         help="Skip spatial median smoothing in dwi preprocessing; the 3D median reference image is still created"
     )
     dwi.add_argument(
@@ -1033,10 +1033,9 @@ if __name__ == "__main__":
     )
     dwi.add_argument(
         "--dwi-bias-method",
-        choices=["none", "mico", "ants"],
+        choices=["skip", "mico", "ants"],
         type=str.lower,
-        default=None,
-        help="Bias field correction for DWI: none, MICO or ANTs (default: None)"
+        help="Bias field correction for DWI; omitted uses preProcessing_DTI.py default"
     )
 
     # ============================================================
@@ -1045,22 +1044,21 @@ if __name__ == "__main__":
     func = parser.add_argument_group("fMRI preprocessing (preProcessing_fMRI.py)")
     func.add_argument(
         "--func-bias-method",
-        choices=["none", "ants"],
+        choices=["skip", "ants"],
         type=str.lower,
-        default=None,
-        help="Bias field correction for fMRI: none or ANTs (default: None)"
+        help="Bias field correction for fMRI; omitted uses preProcessing_fMRI.py default"
     )
     func.add_argument(
         "--func-skip-smoothing",
         action="store_true",
+        default=None,
         help="Skip spatial median smoothing in fMRI preprocessing; the 3D median reference image is still created"
     )
     func.add_argument(
         "--func-bet",
         choices=["skip", "bet", "bet4animal"],
         type=str.lower,
-        default="bet",
-        help="Brain extraction method for fMRI preprocess/process: skip, bet or bet4animal. Default: bet"
+        help="Brain extraction method for fMRI preprocess/process; omitted uses preProcessing_fMRI.py default"
     )
     func.add_argument(
         "--func-frac",
@@ -1087,7 +1085,14 @@ if __name__ == "__main__":
     func.add_argument(
         "--func-atlas-mask-t2",
         action="store_true",
+        default=None,
         help="Mask the T2 BET with the T2 registered atlas annotation before fMRI registration"
+    )
+    func.add_argument(
+        "--func-stc",
+        action="store_true",
+        default=None,
+        help="Enable slice time correction for fMRI processing"
     )
 
     # ============================================================
@@ -1098,15 +1103,13 @@ if __name__ == "__main__":
         "--t2map-bet",
         choices=["skip", "bet", "bet4animal"],
         type=str.lower,
-        default="bet",
-        help="Brain extraction method for T2map: skip, bet or bet4animal. Default: bet"
+        help="Brain extraction method for T2map; omitted uses preProcessing_T2MAP.py default"
     )
     t2map.add_argument(
         "--t2map-bias-method",
-        choices=["none", "mico"],
+        choices=["skip", "mico"],
         type=str.lower,
-        default="mico",
-        help='Biasfield correction method for T2map: none or mico. Default: mico'
+        help='Biasfield correction method for T2map; omitted uses preProcessing_T2MAP.py default'
     )
     t2map.add_argument(
         "--t2map-frac",
@@ -1137,43 +1140,40 @@ if __name__ == "__main__":
     dsi = parser.add_argument_group("DSI Studio / tractography (dsi_main.py)")
     dsi.add_argument(
         "--dsi-b-table",
-        default="auto",
-        help='Diffusion gradient source: "auto" or explicit b-table path'
+        help='Diffusion gradient source; omitted uses dsi_main.py default'
     )
     dsi.add_argument(
         "--dsi-recon-method",
-        default="dti",
         type=str.lower,
         choices=["dti", "gqi"],
-        help="DSI reconstruction method"
+        help="DSI reconstruction method; omitted uses dsi_main.py default"
     )
     dsi.add_argument(
         "--dsi-vivo",
-        default="in_vivo",
         type=str.lower,
         choices=["in_vivo", "ex_vivo"],
-        help="In vivo or ex vivo data (controls sampling length)"
+        help="In vivo or ex vivo data; omitted uses dsi_main.py default"
     )
     dsi.add_argument(
         "--dsi-make-isotropic",
-        default='0',
-        help="Voxel size (mm) for isotropic resampling (0 = off, auto = header)"
+        help="Voxel size (mm) for isotropic resampling; omitted uses dsi_main.py default"
     )
     dsi.add_argument(
         "--dsi-track-param",
         nargs="+",
-        default="default",
-        help="Tracking parameter preset or 8 custom values"
+        help="Tracking parameter preset or 8 custom values; omitted uses dsi_main.py default"
     )
     dsi.add_argument(
         "--dsi-skip-motion-correction",
         dest="dsi_skip_motion_correction",
         action="store_true",
+        default=None,
         help="Skip slice-wise motion correction"
     )
     dsi.add_argument(
         "--dsi-legacy",
         action="store_true",
+        default=None,
         help="Enable legacy .fib.gz / .src.gz support"
     )
     dsi.add_argument(
@@ -1195,8 +1195,6 @@ if __name__ == "__main__":
     configure_logging(log_file_path)
     copy_aidamri_git_information_to_proc(pathToData)
 
-    stc = args.slice_time_correction
-
     if args.data_types is None:
         data_types = ["anat", "dwi", "func", "t2map"]
     else:
@@ -1210,7 +1208,8 @@ if __name__ == "__main__":
     print('Entered information:')
     print(pathToData)
     print('data_types %s' % data_types)
-    print('Slice time correction [%s]' % stc)
+    func_stc_display = "default" if args.func_stc is None else args.func_stc
+    print('fMRI slice time correction [%s]' % func_stc_display)
     print('Steps %s' % steps)
     print()
 
@@ -1292,7 +1291,6 @@ if __name__ == "__main__":
                             key,
                             step,
                             get_sample_cfg(cfg, path, exemptions),
-                            stc,
                         )
                         for path in value
                     ]
