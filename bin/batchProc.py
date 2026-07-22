@@ -921,7 +921,7 @@ if __name__ == "__main__":
         "--exemptionlist",
         help=(
             "CSV file with per-StudyID parameter overrides. "
-            "Empty cells keep the normal CLI/default value."
+            "Empty cells keep the normal CLI/default value. For boolean flags, use false, no, 0 or off to disable a CLI/default value. "
         )
     )
     # ============================================================
