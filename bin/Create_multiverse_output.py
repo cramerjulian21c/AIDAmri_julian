@@ -197,14 +197,14 @@ def process_subject(subject_path, template_path):
 
     epi_pattern = os.path.join(
         func_folder,
-        "*_task-rest_bold_mcf_st_f.nii.gz",
+        "*_task-rest_bold_EPI_mcf_st_f.nii.gz",
     )
     epi_files = sorted(glob.glob(epi_pattern))
 
     if not epi_files:
         epi_pattern = os.path.join(
             func_folder,
-            "*_task-rest_bold_mcf_f.nii.gz",
+            "*_task-rest_bold_EPI_mcf_f.nii.gz",
         )
         epi_files = sorted(glob.glob(epi_pattern))
 
