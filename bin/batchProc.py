@@ -15,6 +15,7 @@ python batchProc.py -i /Volumes/Desktop/MRI/proc_data -t anat dwi func t2map
 """
 
 import argparse
+import ast
 import os
 import fnmatch
 import csv
@@ -597,6 +598,166 @@ def format_step_label(step):
         "process": "Processing",
     }
     return labels.get(step, step.capitalize())
+
+
+CLI_DEFAULT_DESCRIPTIONS = {
+    "sessions": "all sessions",
+    "data_types": "anat, dwi, func, t2map",
+    "debug_steps": "preprocess, registration, process",
+    "exemptionlist": "no exemptionlist",
+    "cpu_percent": "use cpu_cores",
+    "func_atlas_mask_t2": "disabled",
+}
+
+CLI_DEFAULT_SOURCES = {
+    "t2_bias_method": [("2.1_T2PreProcessing/preProcessing_T2.py", "--bias-method")],
+    "t2_bet": [("2.1_T2PreProcessing/preProcessing_T2.py", "--bet")],
+    "t2_frac": [("2.1_T2PreProcessing/preProcessing_T2.py", "--frac")],
+    "t2_radius": [("2.1_T2PreProcessing/preProcessing_T2.py", "--radius")],
+    "t2_gradient": [("2.1_T2PreProcessing/preProcessing_T2.py", "--horizontal-gradient")],
+    "t2_center": [("2.1_T2PreProcessing/preProcessing_T2.py", "--center")],
+    "dwi_denoiser": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--denoiser")],
+    "dwi_average_b0": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--average-b0")],
+    "dwi_bet": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--bet")],
+    "dwi_skip_smoothing": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--skip-smoothing")],
+    "dwi_frac": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--frac")],
+    "dwi_radius": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--radius")],
+    "dwi_gradient": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--horizontal-gradient")],
+    "dwi_bias_method": [("2.2_DTIPreProcessing/preProcessing_DTI.py", "--bias-method")],
+    "func_bias_method": [("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--bias-method")],
+    "func_skip_smoothing": [("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--skip-smoothing")],
+    "func_bet": [
+        ("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--bet"),
+        ("3.3_fMRIActivity/process_fMRI.py", "--bet"),
+    ],
+    "func_frac": [
+        ("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--frac"),
+        ("3.3_fMRIActivity/process_fMRI.py", "--bet-frac"),
+    ],
+    "func_radius": [
+        ("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--radius"),
+        ("3.3_fMRIActivity/process_fMRI.py", "--bet-radius"),
+    ],
+    "func_gradient": [
+        ("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--horizontal-gradient"),
+        ("3.3_fMRIActivity/process_fMRI.py", "--bet-gradient"),
+    ],
+    "func_center": [
+        ("2.3_fMRIPreProcessing/preProcessing_fMRI.py", "--center"),
+        ("3.3_fMRIActivity/process_fMRI.py", "--center"),
+    ],
+    "func_stc": [("3.3_fMRIActivity/process_fMRI.py", "--slicetimecorrection")],
+    "t2map_bet": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--bet")],
+    "t2map_bias_method": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--bias-method")],
+    "t2map_frac": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--frac")],
+    "t2map_radius": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--radius")],
+    "t2map_gradient": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--horizontal-gradient")],
+    "t2map_center": [("4.1_T2mapPreProcessing/preProcessing_T2MAP.py", "--center")],
+    "dsi_b_table": [("3.2_DTIConnectivity/dsi_main.py", "--b-table")],
+    "dsi_recon_method": [("3.2_DTIConnectivity/dsi_main.py", "--recon-method")],
+    "dsi_vivo": [("3.2_DTIConnectivity/dsi_main.py", "--vivo")],
+    "dsi_make_isotropic": [("3.2_DTIConnectivity/dsi_main.py", "--make-isotropic")],
+    "dsi_track_param": [("3.2_DTIConnectivity/dsi_main.py", "--track-params")],
+    "dsi_skip_motion_correction": [("3.2_DTIConnectivity/dsi_main.py", "--skip-motion-correction")],
+    "dsi_legacy": [("3.2_DTIConnectivity/dsi_main.py", "--legacy")],
+    "dsi_optional": [("3.2_DTIConnectivity/dsi_main.py", "--optional")],
+}
+
+SCRIPT_ARGUMENT_DEFAULT_CACHE = {}
+
+
+def literal_ast_value(node):
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+
+
+def get_script_argument_defaults(script_relative_path):
+    if script_relative_path in SCRIPT_ARGUMENT_DEFAULT_CACHE:
+        return SCRIPT_ARGUMENT_DEFAULT_CACHE[script_relative_path]
+
+    script_path = Path(__file__).resolve().parent / script_relative_path
+    defaults = {}
+
+    try:
+        tree = ast.parse(script_path.read_text())
+    except OSError:
+        SCRIPT_ARGUMENT_DEFAULT_CACHE[script_relative_path] = defaults
+        return defaults
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != "add_argument":
+            continue
+
+        option_strings = []
+        for arg in node.args:
+            value = literal_ast_value(arg)
+            if isinstance(value, str):
+                option_strings.append(value)
+        if not option_strings:
+            continue
+
+        keyword_values = {keyword.arg: keyword.value for keyword in node.keywords}
+        if "default" in keyword_values:
+            default = literal_ast_value(keyword_values["default"])
+        else:
+            action = literal_ast_value(keyword_values["action"]) if "action" in keyword_values else None
+            if action == "store_true":
+                default = False
+            elif action == "store_false":
+                default = True
+            else:
+                default = None
+
+        for option in option_strings:
+            defaults[option] = default
+
+    SCRIPT_ARGUMENT_DEFAULT_CACHE[script_relative_path] = defaults
+    return defaults
+
+
+def format_cli_value(value):
+    if value is None:
+        return "not set"
+    if isinstance(value, bool):
+        return "enabled" if value else "disabled"
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return "[]"
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def format_cli_default(dest):
+    if dest in CLI_DEFAULT_DESCRIPTIONS:
+        return f"default: {CLI_DEFAULT_DESCRIPTIONS[dest]}"
+
+    sources = CLI_DEFAULT_SOURCES.get(dest)
+    if not sources:
+        return "default"
+
+    parts = []
+    for script_relative_path, option in sources:
+        defaults = get_script_argument_defaults(script_relative_path)
+        default = defaults.get(option)
+        parts.append(f"{Path(script_relative_path).name}={format_cli_value(default)}")
+
+    return "default: " + "; ".join(parts)
+
+
+def print_cli_parameters(args):
+    values = vars(args)
+    parameters = []
+    for label, value in values.items():
+        display_value = format_cli_default(label) if value is None else format_cli_value(value)
+        parameters.append(f"{label}={display_value}")
+
+    message = "Command line (global) parameters : " + ", ".join(parameters)
+    print(message)
+    logging.info(message)
 
 
 def get_explicit_cli_parameters(parser, args, argv):
@@ -1214,14 +1375,6 @@ if __name__ == "__main__":
     else:
         steps = args.debug_steps
     
-    print('Entered information:')
-    print(pathToData)
-    print('data_types %s' % data_types)
-    func_stc_display = "default" if args.func_stc is None else args.func_stc
-    print('fMRI slice time correction [%s]' % func_stc_display)
-    print('Steps %s' % steps)
-    print()
-
     all_files = findData(pathToData, sessions, data_types)
     exemptions = {}
     if args.exemptionlist:
@@ -1252,7 +1405,7 @@ if __name__ == "__main__":
     elif args.cpu_cores == "max":
         num_processes = multiprocessing.cpu_count()
 
-    print(args)
+    print_cli_parameters(args)
     
     if args.cpu_percent is not None:
         num_processes = args.cpu_percent
@@ -1263,16 +1416,6 @@ if __name__ == "__main__":
     # turns argparse.Namespace into a dict
     cfg = vars(args)
     cfg["num_processes"] = num_processes
-    logging.info(
-        "DSI settings: b_table=%s recon=%s vivo=%s make_isotropic=%s track_param=%s skip_motion_correction=%s legacy=%s optional=%s",
-        args.dsi_b_table,
-        args.dsi_recon_method,
-        args.dsi_vivo,
-        args.dsi_make_isotropic,
-        args.dsi_track_param,
-        args.dsi_skip_motion_correction,
-        args.dsi_legacy,
-        args.dsi_optional)
 
     for key, value in all_files.items():
         if value:
