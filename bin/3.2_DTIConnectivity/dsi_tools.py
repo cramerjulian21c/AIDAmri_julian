@@ -579,6 +579,7 @@ def srcgen(dsi_studio, dir_in, dir_msk, dir_out, b_table, recon_method='dti', vi
         "--action=rec",
         f"--source={src_file}",
         f"--mask={mask_file}",
+        f"--apply_mask",
         f"--method={method_rec}",
         "--other_output=all", #diffusion metrics to compute. 'all' for every possible measure(fa,rd,rdi)
         f"--output={fib_file}",
