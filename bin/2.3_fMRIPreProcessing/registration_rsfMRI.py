@@ -94,6 +94,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                   bsplineMatrix, dref, outfile, use_atlas_mask=False):
     outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
     outputAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixAff.txt')
+    outputComposite = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'MatrixBspline_rsfMRI.nii.gz')
 
     if dref:
         pathT2 = glob.glob(os.path.dirname(outfile) + '*/dwi/*T2w.nii.gz', recursive=False)
@@ -122,13 +123,33 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         command = f"reg_aladin -ref {inputVolume} -flo {T2data} -res {outputT2w} -rigOnly -aff {outputAff}"
         run_command(command)
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
-        # Transforms brain_anno from the individual T2 space (moving image,
-        # -flo) into the rsfMRI grid of inputVolume (-ref). It applies
-        # outputAff, the rigid T2-to-rsfMRI matrix created by reg_aladin above.
-        # outputAnno (-res) is the individual annotation in rsfMRI space (*_Anno.nii.gz);
-        # -inter 0 uses nearest-neighbour interpolation to preserve label IDs.
-        command = f"reg_resample -ref {inputVolume} -flo {brain_anno} -cpp {outputAff} -inter 0 -res {outputAnno}"
-        run_command(command)
+
+        # Compose the T2-to-rsfMRI affine with the existing non-linear
+        # atlas-to-T2 transformation. NiftyReg composes as
+        # Trans3(x) = Trans2(Trans1(x)), so this maps rsfMRI reference
+        # coordinates directly into the original atlas space:
+        # rsfMRI -> T2 via outputAff, then T2 -> atlas via bsplineMatrix.
+        run_command([
+            "reg_transform",
+            "-ref", inputVolume,
+            "-ref2", T2data,
+            "-comp", outputAff, bsplineMatrix, outputComposite,
+        ])
+
+        # Resample the original atlas directly into rsfMRI space using the
+        # composed transformation. This avoids the extra T2-space label
+        # resampling step and follows the paper's linked-transform scheme.
+
+        original_atlas = splitAnno  # all atlas inputs are identical in this pipeline
+
+        run_command([
+            "reg_resample",
+            "-ref", inputVolume,
+            "-flo", original_atlas,
+            "-trans", outputComposite,
+            "-inter", "0",
+            "-res", outputAnno,
+        ])
     ''' Atlas files are all the same the following steps are redundant but are kept for clarity and future flexibility
     # resample split annotation
     outputAnnoSplit = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit.nii.gz')
