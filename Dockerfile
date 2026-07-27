@@ -83,11 +83,12 @@ ENV PATH="${PATH}:${NIFTYREG_INSTALL}/bin"
 ENV LD_LIBRARY_PATH="/aida/dsi_studio_ubuntu2204/dsi-studio:/usr/local/lib:/usr/lib:/lib:${NIFTYREG_INSTALL}/lib"
 WORKDIR /aida
 
-# download DSI studio
-# https://github.com/frankyeh/DSI-Studio/releases/download/2023.12.06/dsi_studio_ubuntu2204.zip
-RUN wget https://github.com/frankyeh/DSI-Studio/releases/download/2025.04.16/dsi_studio_ubuntu2204.zip &&\
-	unzip dsi_studio_ubuntu2204.zip -d /aida/dsi_studio_ubuntu2204 &&\
-	rm dsi_studio_ubuntu2204.zip
+# Download the Ubuntu 22.04 CPU build from the reproducibility-pinned DSI Studio release.
+ARG DSI_STUDIO_VERSION=2026.7.25
+ARG DSI_STUDIO_ARCHIVE=dsi_studio_ubuntu2204_cpu.zip
+RUN wget "https://github.com/frankyeh/DSI-Studio/releases/download/${DSI_STUDIO_VERSION}/${DSI_STUDIO_ARCHIVE}" &&\
+	unzip "${DSI_STUDIO_ARCHIVE}" -d /aida/dsi_studio_ubuntu2204 &&\
+	rm "${DSI_STUDIO_ARCHIVE}"
 
 # Install ANTs (if no 22.04 binary, keep 18.04 version)
 # https://github.com/ANTsX/ANTs/releases/download/v2.6.2/ants-2.6.2-ubuntu-22.04-X64-gcc.zip
