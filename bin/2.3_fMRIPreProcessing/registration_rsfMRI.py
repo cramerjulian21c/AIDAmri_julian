@@ -14,6 +14,7 @@ import shutil as sh
 import subprocess
 import shlex
 import logging
+import nibabel as nib
 from calendar import month_name
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -22,6 +23,7 @@ from zoneinfo import ZoneInfo
 LOGGER = logging.getLogger(__name__)
 DISABLE_LOG_ENV = "AIDAMRI_DISABLE_SCRIPT_LOG"
 REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
+POSTERIOR_CROP_FRACTION = 0.50
 
 
 class BerlinTimeFormatter(logging.Formatter):
@@ -94,6 +96,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                   bsplineMatrix, dref, outfile, use_atlas_mask=False):
     outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
     outputAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixAff.txt')
+    outputFlirtAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixFlirt.mat')
     outputComposite = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'MatrixBspline_rsfMRI.nii.gz')
 
     if dref:
@@ -114,14 +117,29 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                 run_command(command_args)
             T2data = maskedT2
 
-        # Rigidly registers the individual T2 BET image T2data (moving image,
-        # -flo) to the rsfMRI space defined by inputVolume (reference, -ref).
-        # outputT2w (-res) is the resampled T2 image in the rsfMRI grid.
-        # At the same time, -aff creates outputAff, the new T2-to-rsfMRI
-        # transformation matrix. Despite its name, this matrix contains only
-        # rotations and translations because -rigOnly is specified.
-        command = f"reg_aladin -ref {inputVolume} -flo {T2data} -res {outputT2w} -rigOnly -aff {outputAff}"
-        run_command(command)
+        # Rigidly register the individual T2 BET image (moving image, -in) to
+        # the rsfMRI space (reference, -ref). Normalised mutual information is
+        # used because T2 and EPI/fMRI have different intensity contrasts.
+        run_command([
+            "flirt",
+            "-in", T2data,
+            "-ref", inputVolume,
+            "-out", outputT2w,
+            "-omat", outputFlirtAff,
+            "-dof", "6",
+            "-cost", "normmi",#Fine-tuning the transformation
+        ])
+
+        # FLIRT and NiftyReg use different affine matrix conventions. Convert
+        # the FLIRT matrix before composing it with the NiftyReg B-spline.
+        run_command([
+            "reg_transform",
+            "-flirtAff2NR",
+            outputFlirtAff,
+            inputVolume,
+            T2data,
+            outputAff,
+        ])
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
 
         # Compose the T2-to-rsfMRI affine with the existing non-linear
@@ -240,8 +258,8 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
 
     # Transforms the anatomical intensity image brain_template from
     # individual T2 space (moving image, -flo) into the rsfMRI grid of
-    # inputVolume (-ref). It applies outputAff, the rigid T2-to-rsfMRI
-    # matrix created by reg_aladin. outputTemplate (-res) is the anatomical
+    # inputVolume (-ref). It applies outputAff, the converted rigid
+    # T2-to-rsfMRI matrix created by FLIRT. outputTemplate (-res) is the anatomical
     # template in rsfMRI space. Nearest-neighbour label interpolation is
     # intentionally not requested because this is an intensity image.
     command = f"reg_resample -ref {inputVolume} -flo {brain_template} -trans {outputAff} -res {outputTemplate}"
