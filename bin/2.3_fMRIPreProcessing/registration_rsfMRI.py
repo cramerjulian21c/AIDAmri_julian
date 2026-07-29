@@ -94,10 +94,13 @@ def run_command(command):
 
 def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
                   bsplineMatrix, dref, outfile, use_atlas_mask=False):
-    outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
-    outputAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixAff.txt')
-    outputFlirtAff = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'transMatrixFlirt.mat')
-    outputComposite = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + 'MatrixBspline_rsfMRI.nii.gz')
+    prefix = os.path.basename(inputVolume).split('.')[0]
+    outputT2w = os.path.join(outfile, prefix + '_T2w.nii.gz') #T2 in fMRI space
+    outputFmriT2w = os.path.join(outfile, prefix + '_fMRI_inT2.nii.gz') #fMRI in T2 space nifti
+    outputAff = os.path.join(outfile, prefix + 'transMatrixAff.txt') #t2_to_fmri aff
+    outputFlirtFmriToT2 = os.path.join(outfile, prefix + 'transMatrixFlirt_fMRItoT2.mat')
+    outputFlirtAff = os.path.join(outfile, prefix + 'transMatrixFlirt.mat')#inverse fmri to t2 mat
+    outputComposite = os.path.join(outfile, prefix + 'Matrixcomp_rsfMRI.nii.gz')#composite of t2 bspline and t2_to_fmri aff
 
     if dref:
         pathT2 = glob.glob(os.path.dirname(outfile) + '*/dwi/*T2w.nii.gz', recursive=False)
@@ -117,28 +120,46 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                 run_command(command_args)
             T2data = maskedT2
 
-        # Rigidly register the individual T2 BET image (moving image, -in) to
-        # the rsfMRI space (reference, -ref). Normalised mutual information is
-        # used because T2 and EPI/fMRI have different intensity contrasts.
+        # Estimate the rigid transform in the fMRI-to-T2 direction so the
+        # higher-resolution, higher-contrast T2 defines the reference space.
+        run_command([
+            "flirt",
+            "-in", inputVolume,
+            "-ref", T2data,
+            "-out", outputFmriT2w,#fMRI in T2 space nifti
+            "-omat", outputFlirtFmriToT2,#fmri to t2 space matrix
+            "-dof", "7",
+            "-cost", "normmi",
+        ])
+
+        # The remaining pipeline needs the opposite T2-to-fMRI direction.
+        run_command([
+            "convert_xfm",
+            "-omat", outputFlirtAff,#inverse fmri to t2 mat
+            "-inverse", outputFlirtFmriToT2,#fmri to t2 space matrix
+        ])
+
+        # Create the usual T2-in-fMRI-space QC image with the inverted matrix.
         run_command([
             "flirt",
             "-in", T2data,
             "-ref", inputVolume,
-            "-out", outputT2w,
-            "-omat", outputFlirtAff,
-            "-dof", "6",
-            "-cost", "normmi",#Fine-tuning the transformation
+            "-out", outputT2w,#T2 in fMRI space nifti
+            "-init", outputFlirtAff,#inverse fmri to t2 mat
+            "-applyxfm", #doesnt use the fMRI intensity for optimization and doesnt do a new registration
+            "-interp", "trilinear", #trilinear interpolation for continuing MRI intensities
         ])
 
         # FLIRT and NiftyReg use different affine matrix conventions. Convert
-        # the FLIRT matrix before composing it with the NiftyReg B-spline.
+        # the inverted T2-to-fMRI matrix before composing it with the NiftyReg
+        # B-spline transformation.
         run_command([
             "reg_transform",
             "-flirtAff2NR",
-            outputFlirtAff,
+            outputFlirtAff,#inverse fmri to t2 mat
             inputVolume,
             T2data,
-            outputAff,
+            outputAff,#t2_to_fmri aff
         ])
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
 
