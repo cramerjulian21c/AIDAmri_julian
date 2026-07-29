@@ -80,15 +80,16 @@ RUN cmake -D CMAKE_BUILD_TYPE=Release \
 
 ENV NIFTYREG_INSTALL=/aida/NiftyReg/niftyreg_install
 ENV PATH="${PATH}:${NIFTYREG_INSTALL}/bin"
-ENV LD_LIBRARY_PATH="/aida/dsi_studio_ubuntu2204/dsi-studio:/usr/local/lib:/usr/lib:/lib:${NIFTYREG_INSTALL}/lib"
+ENV LD_LIBRARY_PATH="/aida/dsi_studio_ubuntu2204/dsi-studio-cpu:/usr/local/lib:/usr/lib:/lib:${NIFTYREG_INSTALL}/lib"
 WORKDIR /aida
 
 # Download the Ubuntu 22.04 CPU build from the reproducibility-pinned DSI Studio release.
-ARG DSI_STUDIO_VERSION=2026.7.25
+ARG DSI_STUDIO_URL=https://github.com/frankyeh/DSI-Studio/releases/download/2025.04.16/dsi_studio_ubuntu2204_cpu.zip
 ARG DSI_STUDIO_ARCHIVE=dsi_studio_ubuntu2204_cpu.zip
-RUN wget "https://github.com/frankyeh/DSI-Studio/releases/download/${DSI_STUDIO_VERSION}/${DSI_STUDIO_ARCHIVE}" &&\
-	unzip "${DSI_STUDIO_ARCHIVE}" -d /aida/dsi_studio_ubuntu2204 &&\
-	rm "${DSI_STUDIO_ARCHIVE}"
+
+RUN wget -O "${DSI_STUDIO_ARCHIVE}" "${DSI_STUDIO_URL}" && \
+    unzip "${DSI_STUDIO_ARCHIVE}" -d /aida/dsi_studio_ubuntu2204 && \
+    rm "${DSI_STUDIO_ARCHIVE}"
 
 # Install ANTs (if no 22.04 binary, keep 18.04 version)
 # https://github.com/ANTsX/ANTs/releases/download/v2.6.2/ants-2.6.2-ubuntu-22.04-X64-gcc.zip
@@ -133,8 +134,8 @@ COPY lib/ lib/
 COPY install/install_immv.sh install/install_immv.sh
 RUN chmod +x /aida/install/install_immv.sh
 RUN /aida/install/install_immv.sh
-RUN echo "/aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio" > /aida/bin/3.2_DTIConnectivity/dsi_studioPath.txt
-RUN test -x /aida/dsi_studio_ubuntu2204/dsi-studio/dsi_studio
+RUN echo "/aida/dsi_studio_ubuntu2204/dsi-studio-cpu/dsi_studio" > /aida/bin/3.2_DTIConnectivity/dsi_studioPath.txt
+RUN test -x /aida/dsi_studio_ubuntu2204/dsi-studio-cpu/dsi_studio
 
 RUN pip install -c constraints.txt dipy scikit-learn
 RUN pip install -c constraints.txt fslpy
