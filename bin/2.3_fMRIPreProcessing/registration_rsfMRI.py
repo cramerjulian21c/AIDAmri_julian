@@ -15,6 +15,7 @@ import subprocess
 import shlex
 import logging
 import nibabel as nib
+import numpy as np
 from calendar import month_name
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,6 +25,7 @@ LOGGER = logging.getLogger(__name__)
 DISABLE_LOG_ENV = "AIDAMRI_DISABLE_SCRIPT_LOG"
 REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 POSTERIOR_CROP_FRACTION = 0.50
+SUPERIOR_NOISE_DEPTH = 2
 
 
 class BerlinTimeFormatter(logging.Formatter):
@@ -79,6 +81,81 @@ def run_command(command):
         raise
 
 
+def create_superior_noise_weight(
+        input_path,
+        weight_path,
+        noise_mask_path,
+        edge_depth=SUPERIOR_NOISE_DEPTH):
+    """Create a FLIRT weight that excludes the superior foreground surface."""
+    if edge_depth < 1:
+        raise ValueError("Superior noise depth must be at least one voxel.")
+
+    image = nib.load(input_path)
+    data = image.get_fdata(dtype=np.float32)
+    if data.ndim != 3:
+        raise ValueError(
+            "Superior-noise detection requires a 3D image, got shape %s for %s."
+            % (data.shape, input_path)
+        )
+
+    foreground = np.isfinite(data) & (data > 0)
+    if not np.any(foreground):
+        raise ValueError("Image contains no positive foreground voxels: %s" % input_path)
+
+    axis_codes = nib.aff2axcodes(image.affine)
+    try:
+        superior_axis = next(
+            axis for axis, code in enumerate(axis_codes)
+            if code in ("S", "I")
+        )
+    except StopIteration as error:
+        raise ValueError(
+            "Could not determine the superior-inferior axis of %s (orientation: %s)."
+            % (input_path, axis_codes)
+        ) from error
+
+    superior_at_high_index = axis_codes[superior_axis] == "S"
+    # Work with a view whose first axis runs from superior to inferior.
+    # The cumulative foreground count then selects the first N foreground
+    # voxels in every column. This follows the actual outer surface instead of
+    # selecting a deeper, bright anatomical band by its intensity.
+    superior_first = np.moveaxis(foreground, superior_axis, 0)
+    if superior_at_high_index:
+        superior_first = superior_first[::-1]
+    surface = superior_first & (
+        np.cumsum(superior_first, axis=0, dtype=np.int32) <= edge_depth
+    )
+    if superior_at_high_index:
+        surface = surface[::-1]
+    noise = np.moveaxis(surface, 0, superior_axis)
+
+    weight = np.ones(data.shape, dtype=np.float32)
+    weight[noise] = 0.0
+
+    weight_header = image.header.copy()
+    weight_header.set_data_dtype(np.float32)
+    nib.save(nib.Nifti1Image(weight, image.affine, weight_header), weight_path)
+
+    mask_header = image.header.copy()
+    mask_header.set_data_dtype(np.uint8)
+    nib.save(
+        nib.Nifti1Image(noise.astype(np.uint8), image.affine, mask_header),
+        noise_mask_path,
+    )
+
+    LOGGER.info(
+        "Superior edge exclusion for %s: orientation=%s, depth=%d voxels, "
+        "excluded_voxels=%d; weight=%s, mask=%s",
+        input_path,
+        axis_codes,
+        edge_depth,
+        int(noise.sum()),
+        weight_path,
+        noise_mask_path,
+    )
+    return weight_path
+
+
 # Parameters passed to regSIG2rsfMRI:
 # inputVolume: Preprocessed rsfMRI reference image and final target space.
 # T2data: Individual brain-extracted T2 image (*/anat/*Bet.nii.gz).
@@ -91,9 +168,13 @@ def run_command(command):
 # dref: If True, use existing results from the related DWI directory.
 # outfile: Directory for registered images, matrix and log file.
 # use_atlas_mask: If True, mask T2data with a dilated brain_anno mask.
+# suppress_superior_noise: If True, remove the superior fMRI edge from the BET
+#                         image used for registration.
 
 def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
-                  bsplineMatrix, dref, outfile, use_atlas_mask=False):
+                  bsplineMatrix, dref, outfile, use_atlas_mask=False,
+                  suppress_superior_noise=False,
+                  superior_noise_depth=SUPERIOR_NOISE_DEPTH):
     prefix = os.path.basename(inputVolume).split('.')[0]
     outputT2w = os.path.join(outfile, prefix + '_T2w.nii.gz') #T2 in fMRI space
     outputFmriT2w = os.path.join(outfile, prefix + '_fMRI_inT2.nii.gz') #fMRI in T2 space nifti
@@ -101,6 +182,9 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
     outputFlirtFmriToT2 = os.path.join(outfile, prefix + 'transMatrixFlirt_fMRItoT2.mat')
     outputFlirtAff = os.path.join(outfile, prefix + 'transMatrixFlirt.mat')#inverse fmri to t2 mat
     outputComposite = os.path.join(outfile, prefix + 'Matrixcomp_rsfMRI.nii.gz')#composite of t2 bspline and t2_to_fmri aff
+    superiorNoiseWeight = os.path.join(outfile, prefix + '_SuperiorNoiseWeight.nii.gz')
+    superiorNoiseMask = os.path.join(outfile, prefix + '_SuperiorNoiseMask.nii.gz')
+    noiseMaskedInput = os.path.join(outfile, prefix + '_NoiseMasked.nii.gz')
 
     if dref:
         pathT2 = glob.glob(os.path.dirname(outfile) + '*/dwi/*T2w.nii.gz', recursive=False)
@@ -120,11 +204,28 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                 run_command(command_args)
             T2data = maskedT2
 
-        # Estimate the rigid transform in the fMRI-to-T2 direction so the
-        # higher-resolution, higher-contrast T2 defines the reference space.
+        registrationInput = inputVolume
+        if suppress_superior_noise:
+            create_superior_noise_weight(
+                inputVolume,
+                superiorNoiseWeight,
+                superiorNoiseMask,
+                edge_depth=superior_noise_depth,
+            )
+            run_command([
+                "fslmaths",
+                inputVolume,
+                "-mas",
+                superiorNoiseWeight,
+                noiseMaskedInput,
+            ])
+            registrationInput = noiseMaskedInput
+
+        # Estimate the transform in the fMRI-to-T2 direction so the
+        # higher-resolution, higher-contrast T2 defines the reference.
         run_command([
             "flirt",
-            "-in", inputVolume,
+            "-in", registrationInput,
             "-ref", T2data,
             "-out", outputFmriT2w,#fMRI in T2 space nifti
             "-omat", outputFlirtFmriToT2,#fmri to t2 space matrix
@@ -143,7 +244,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
         run_command([
             "flirt",
             "-in", T2data,
-            "-ref", inputVolume,
+            "-ref", registrationInput,
             "-out", outputT2w,#T2 in fMRI space nifti
             "-init", outputFlirtAff,#inverse fmri to t2 mat
             "-applyxfm", #doesnt use the fMRI intensity for optimization and doesnt do a new registration
@@ -157,7 +258,7 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
             "reg_transform",
             "-flirtAff2NR",
             outputFlirtAff,#inverse fmri to t2 mat
-            inputVolume,
+            registrationInput,
             T2data,
             outputAff,#t2_to_fmri aff
         ])
@@ -279,12 +380,17 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
 
     # Transforms the anatomical intensity image brain_template from
     # individual T2 space (moving image, -flo) into the rsfMRI grid of
-    # inputVolume (-ref). It applies outputAff, the converted rigid
+    # inputVolume (-ref). It applies outputAff, the converted 7-DoF
     # T2-to-rsfMRI matrix created by FLIRT. outputTemplate (-res) is the anatomical
     # template in rsfMRI space. Nearest-neighbour label interpolation is
     # intentionally not requested because this is an intensity image.
-    command = f"reg_resample -ref {inputVolume} -flo {brain_template} -trans {outputAff} -res {outputTemplate}"
-    run_command(command)
+    run_command([
+        "reg_resample",
+        "-ref", inputVolume,
+        "-flo", brain_template,
+        "-trans", outputAff,
+        "-res", outputTemplate,
+    ])
     
     return outputAnno
 
@@ -325,6 +431,17 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--dtiasRef', action='store_true', help='use DTI as reference if data quality is low. (Currently commented out/unused)')
     parser.add_argument('--atlas-mask-t2', action='store_true',
                         help='mask the T2 BET with the registered atlas annotation before registration')
+    parser.add_argument(
+        '--suppress-superior-noise',
+        action='store_true',
+        help='remove the superior fMRI foreground edge from the BET used by FLIRT',
+    )
+    parser.add_argument(
+        '--superior-noise-depth',
+        type=int,
+        default=SUPERIOR_NOISE_DEPTH,
+        help='number of superior foreground voxels excluded per image column (default: %(default)s)',
+    )
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask', nargs='?', type=str,
                         default=None)
     parser.add_argument('-s', '--splitAnno', help='Split annotations atlas', nargs='?', type=str,
@@ -421,8 +538,21 @@ if __name__ == "__main__":
     if not os.path.exists(anno_rsfMRI):
         sys.exit("Error: '%s' is not an existing directory." % (anno_rsfMRI,))
 
-    output = regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI,
-                           anno_rsfMRI, bsplineMatrix, args.dtiasRef, outfile, args.atlas_mask_t2)
+    output = regSIG2rsfMRI(
+        inputVolume,
+        T2data,
+        brain_template,
+        brain_anno,
+        splitAnno,
+        splitAnno_rsfMRI,
+        anno_rsfMRI,
+        bsplineMatrix,
+        args.dtiasRef,
+        outfile,
+        use_atlas_mask=args.atlas_mask_t2,
+        suppress_superior_noise=args.suppress_superior_noise,
+        superior_noise_depth=args.superior_noise_depth,
+    )
     sys.stdout = sys.__stdout__
 
     current_dir = os.path.dirname(inputVolume)
