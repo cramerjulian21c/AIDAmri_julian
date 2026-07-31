@@ -261,8 +261,23 @@ Behavior:
 
 ### `batch_qc_reports.py`
 
-Importable Python helper module for project-level QC reports. It does not define
-a command-line interface.
+Python helper module for project-level QC reports. 
+Direct command-line use:
+
+```bash
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report bet --n-slices 7
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report registration
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --custom-parameter t2-frac=0.1 --custom-parameter t2-bias-method=mico
+```
+
+`--report` accepts `all` (the default), `bet`, or `registration`. `--n-slices`
+sets the number of slices per orientation and defaults to `10`. Repeat
+`--custom-parameter NAME=VALUE` to record processing parameters in the custom
+parameters section of the generated HTML reports. Parameter names without a
+leading `--` are normalized automatically.
+
+Import use:
 
 Available functions:
 
