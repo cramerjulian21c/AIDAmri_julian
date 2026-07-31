@@ -229,8 +229,8 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
             "-ref", T2data,
             "-out", outputFmriT2w,#fMRI in T2 space nifti
             "-omat", outputFlirtFmriToT2,#fmri to t2 space matrix
-            "-dof", "7",
-            "-cost", "normmi",
+            "-dof", "6",
+            "-cost", "corratio",
         ])
 
         # The remaining pipeline needs the opposite T2-to-fMRI direction.
