@@ -1,3 +1,4 @@
+import argparse
 import html
 import logging
 import os
@@ -116,7 +117,7 @@ def _plot_bet_image(bet_path, out_dir, project_dir, n_slices):
     slices = _slice_indices(data, n_slices)
     vmin, vmax = _display_limits(data)
     fig, axes = plt.subplots(3, n_slices, figsize=(3 * n_slices, 9))
-    axes = np.atleast_2d(axes)
+    axes = np.asarray(axes).reshape(3, n_slices)
 
     for row, orientation in enumerate(orientations):
         for col, index in enumerate(slices[row]):
@@ -159,7 +160,7 @@ def _plot_registration_overlay(bet_path, anno_path, out_dir, project_dir, n_slic
     slices = _slice_indices(bet_data, n_slices)
     vmin, vmax = _display_limits(bet_data)
     fig, axes = plt.subplots(3, n_slices, figsize=(3 * n_slices, 9))
-    axes = np.atleast_2d(axes)
+    axes = np.asarray(axes).reshape(3, n_slices)
 
     for row, orientation in enumerate(orientations):
         for col, index in enumerate(slices[row]):
@@ -400,3 +401,94 @@ def build_registration_qc_report(project_dir, n_slices=10, custom_parameters=Non
         custom_parameters=custom_parameters,
     )
     return html_path, len(entries)
+
+
+def _positive_int(value):
+    value = int(value)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
+def _custom_parameter(value):
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("must use NAME=VALUE format")
+
+    name, parameter_value = value.split("=", 1)
+    name = name.strip()
+    if not name:
+        raise argparse.ArgumentTypeError("parameter name must not be empty")
+    if not name.startswith("-"):
+        name = f"--{name}"
+    return name, parameter_value
+
+
+def _build_argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Create project-level BET and registration QC reports."
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        dest="project_dir",
+        required=True,
+        type=Path,
+        help="Processed project directory containing sub-*/ses-* folders.",
+    )
+    parser.add_argument(
+        "--report",
+        choices=("all", "bet", "registration"),
+        default="all",
+        help="Report to create (default: all).",
+    )
+    parser.add_argument(
+        "--n-slices",
+        type=_positive_int,
+        default=10,
+        help="Number of slices per orientation (default: 10).",
+    )
+    parser.add_argument(
+        "--custom-parameter",
+        dest="custom_parameters",
+        action="append",
+        type=_custom_parameter,
+        default=[],
+        metavar="NAME=VALUE",
+        help=(
+            "Parameter to list in the HTML report, for example "
+            "--custom-parameter t2-frac=0.1. May be repeated."
+        ),
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = _build_argument_parser()
+    args = parser.parse_args(argv)
+    project_dir = args.project_dir.expanduser()
+
+    if not project_dir.is_dir():
+        parser.error(f"project directory does not exist or is not a directory: {project_dir}")
+
+    report_builders = []
+    if args.report in ("all", "bet"):
+        report_builders.append(("BET", build_bet_qc_report))
+    if args.report in ("all", "registration"):
+        report_builders.append(("Registration", build_registration_qc_report))
+
+    for report_label, report_builder in report_builders:
+        html_path, count = report_builder(
+            project_dir,
+            n_slices=args.n_slices,
+            custom_parameters=args.custom_parameters or None,
+        )
+        if html_path:
+            print(f"{report_label} report written to {html_path} ({count} image(s))")
+        else:
+            print(f"{report_label} report skipped: no matching files found.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
