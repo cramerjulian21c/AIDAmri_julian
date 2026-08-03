@@ -22,6 +22,7 @@ from common.bet import applyBET, skip_bet_function
 from common.script_logging import setup_script_logging
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
+SUPERIOR_NOISE_DEPTH = 2
 
 
 def create_brkraw_backup(input_file):
@@ -101,6 +102,135 @@ def set_xform_codes_to_one(input_file):
     img.set_qform(img.affine, code=1)
     img.set_sform(img.affine, code=1)
     nib.save(img, input_file)
+    return input_file
+
+
+def suppress_superior_noise(input_file, edge_depth=SUPERIOR_NOISE_DEPTH):
+    """
+    Remove a thin foreground layer along the anatomical superior BET edge.
+
+    Selected voxels are set to zero in the existing BET image. Two additional
+    QC images are written: ``SuperiorNoiseMask`` marks removed voxels with 1,
+    while ``SuperiorNoiseWeight`` marks retained voxels with 1.
+    """
+    if edge_depth < 1:
+        raise ValueError("Superior noise depth must be at least one voxel.")
+
+    # This function must run on the 3D reference image returned by applyBET,
+    # not on the original 4D fMRI time series.
+    image = nib.load(input_file)
+    data = image.get_fdata(dtype=np.float32)
+    if data.ndim != 3:
+        raise ValueError(
+            "Superior-noise suppression requires a 3D BET image, got shape "
+            f"{data.shape} for {input_file}."
+        )
+
+    # BET normally represents background as zero. Positive finite voxels are
+    # therefore treated as the current foreground from which to remove a layer.
+    foreground = np.isfinite(data) & (data > 0)
+    if not np.any(foreground):
+        raise ValueError(f"BET image contains no positive foreground voxels: {input_file}")
+
+    # Determine the anatomical superior-inferior axis
+    axis_codes = nib.aff2axcodes(image.affine)
+    try:
+        superior_axis = next(
+            axis for axis, code in enumerate(axis_codes)
+            if code in ("S", "I")
+        )
+    except StopIteration as error:
+        raise ValueError(
+            f"Could not determine the superior-inferior axis of {input_file} "
+            f"(orientation: {axis_codes})."
+        ) from error
+
+    # Temporarily move the superior-inferior dimension to axis 0 and orient it
+    # so index 0 always corresponds to the anatomical superior side.
+    superior_first = np.moveaxis(foreground, superior_axis, 0)
+    # Nifti has to be in LIP orientation!!
+
+    # The cumulative foreground count is calculated independently for every
+    # column through the brain. Selecting counts 1..edge_depth makes the mask
+    # follow the curved superior BET surface rather than a flat array slice.
+    noise_superior_first = superior_first & (
+        np.cumsum(superior_first, axis=0, dtype=np.int32) <= edge_depth
+    )
+
+    noise_mask = np.moveaxis(noise_superior_first, 0, superior_axis)
+
+    # Mask conventions:
+    #   noise_mask: 1 = remove, 0 = retain
+    #   keep_mask:  0 = remove, 1 = retain
+    keep_mask = np.ones(data.shape, dtype=np.float32)
+    keep_mask[noise_mask] = 0.0
+
+    prefix = os.path.basename(input_file).split('.')[0]
+    output_dir = os.path.dirname(input_file)
+    noise_mask_path = os.path.join(output_dir, prefix + '_SuperiorNoiseMask.nii.gz')
+    noise_weight_path = os.path.join(output_dir, prefix + '_SuperiorNoiseWeight.nii.gz')
+
+    # Save both conventions so the removed area can be inspected directly and
+    # the inverse mask can be reused without another inversion operation.
+    weight_header = image.header.copy()
+    weight_header.set_data_dtype(np.float32)
+    weight_image = nib.Nifti1Image(keep_mask, image.affine, weight_header)
+    weight_image.set_qform(image.affine, code=1)
+    weight_image.set_sform(image.affine, code=1)
+    nib.save(weight_image, noise_weight_path)
+
+    mask_header = image.header.copy()
+    mask_header.set_data_dtype(np.uint8)
+    mask_image = nib.Nifti1Image(
+        noise_mask.astype(np.uint8),
+        image.affine,
+        mask_header,
+    )
+    mask_image.set_qform(image.affine, code=1)
+    mask_image.set_sform(image.affine, code=1)
+    nib.save(mask_image, noise_mask_path)
+
+    # Apply the keep mask directly to the BET result. Geometry, dimensions and
+    # filename remain unchanged, so downstream code still finds *Bet.nii.gz.
+    cleaned_data = np.ascontiguousarray(data * keep_mask, dtype=np.float32)
+    cleaned_header = image.header.copy()
+    cleaned_header.set_data_dtype(np.float32)
+    cleaned_image = nib.Nifti1Image(cleaned_data, image.affine, cleaned_header)
+    cleaned_image.set_qform(image.affine, code=1)
+    cleaned_image.set_sform(image.affine, code=1)
+    nib.save(cleaned_image, input_file)
+
+    # process_fMRI.py later applies the companion BET mask to the 4D time
+    # series. Update it as well so preprocessing, registration and processing
+    # all use the same cleaned brain extent.
+    bet_mask_path = input_file.replace('.nii.gz', '_mask.nii.gz')
+    if os.path.exists(bet_mask_path):
+        bet_mask_image = nib.load(bet_mask_path)
+        bet_mask_data = bet_mask_image.get_fdata() > 0
+        if bet_mask_data.shape != keep_mask.shape:
+            raise ValueError(
+                f"BET image and BET mask shapes differ: {data.shape} vs "
+                f"{bet_mask_data.shape}."
+            )
+        #Keep voxel if its inside BET mask and not inside noise mask
+        cleaned_bet_mask = bet_mask_data & ~noise_mask
+        bet_mask_header = bet_mask_image.header.copy()
+        bet_mask_header.set_data_dtype(np.uint8)
+        cleaned_bet_mask_image = nib.Nifti1Image(
+            cleaned_bet_mask.astype(np.uint8),
+            bet_mask_image.affine,
+            bet_mask_header,
+        )
+        cleaned_bet_mask_image.set_qform(bet_mask_image.affine, code=1)
+        cleaned_bet_mask_image.set_sform(bet_mask_image.affine, code=1)
+        nib.save(cleaned_bet_mask_image, bet_mask_path)
+
+    print(
+        "Superior-noise suppression completed after BET: "
+        f"orientation={axis_codes}, depth={edge_depth}, "
+        f"removed_voxels={int(noise_mask.sum())}, BET={input_file}, "
+        f"noise_mask={noise_mask_path}, keep_mask={noise_weight_path}"
+    )
     return input_file
 
 
@@ -234,6 +364,17 @@ if __name__ == "__main__":
         action='store_true',
         help='Skip the FSL spatial median smoothing step; still creates the 3D median reference image'
     )
+    parser.add_argument(
+        '--suppress-superior-noise',
+        action='store_true',
+        help='remove the superior foreground edge after BET',
+    )
+    parser.add_argument(
+        '--superior-noise-depth',
+        type=int,
+        default=SUPERIOR_NOISE_DEPTH,
+        help='number of superior foreground voxels removed per image column after BET (default: %(default)s)',
+    )
     args = parser.parse_args()
 
     # set parameters
@@ -285,6 +426,14 @@ if __name__ == "__main__":
             horizontal_gradient=horizontal_gradient,
             use_bet4animal=args.bet == "bet4animal",
             center=args.center,
+        )
+
+    # Apply the optional cleanup only after BET has established the foreground
+    # and created the companion BET mask used by downstream fMRI processing.
+    if args.suppress_superior_noise:
+        outputBET = suppress_superior_noise(
+            outputBET,
+            edge_depth=args.superior_noise_depth,
         )
 
     print("Preprocessing completed")

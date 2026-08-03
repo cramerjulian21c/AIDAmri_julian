@@ -307,6 +307,10 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg):
                     if cfg.get("func_center") is not None:
                         cx, cy, cz = cfg["func_center"]
                         command += f' -c {cx} {cy} {cz}'
+                    if cfg.get("func_suppress_superior_noise") is True:
+                        command += " --suppress-superior-noise"
+                    if cfg.get("func_superior_noise_depth") is not None:
+                        command += f' --superior-noise-depth {cfg["func_superior_noise_depth"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -322,10 +326,6 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg):
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_atlas_mask_t2") is True:
                         command += " --atlas-mask-t2"
-                    if cfg.get("func_suppress_superior_noise") is True:
-                        command += " --suppress-superior-noise"
-                    if cfg.get("func_superior_noise_depth") is not None:
-                        command += f' --superior-noise-depth {cfg["func_superior_noise_depth"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -1096,13 +1096,13 @@ if __name__ == "__main__":
         "--func-suppress-superior-noise",
         action="store_true",
         default=None,
-        help="Remove the superior fMRI foreground edge from the BET used by FLIRT"
+        help="Remove the superior fMRI foreground edge directly after BET"
     )
     func.add_argument(
         "--func-superior-noise-depth",
         type=int,
         default=None,
-        help="Number of superior foreground voxels excluded per image column"
+        help="Number of superior foreground voxels removed per image column after BET"
     )
     func.add_argument(
         "--func-stc",
