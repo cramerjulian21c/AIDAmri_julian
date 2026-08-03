@@ -326,6 +326,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg):
                     command = f'python registration_rsfMRI.py -i {_quote(currentFile[0])}'
                     if cfg.get("func_atlas_mask_t2") is True:
                         command += " --atlas-mask-t2"
+                    if cfg.get("func_mask_atlas_with_bet") is True:
+                        command += " --mask-atlas-with-bet"
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -1091,6 +1093,12 @@ if __name__ == "__main__":
         action="store_true",
         default=None,
         help="Mask the T2 BET with the T2 registered atlas annotation before fMRI registration"
+    )
+    func.add_argument(
+        "--func-mask-atlas-with-bet",
+        action="store_true",
+        default=None,
+        help="Set registered fMRI atlas labels to zero wherever the fMRI BET is zero"
     )
     func.add_argument(
         "--func-suppress-superior-noise",

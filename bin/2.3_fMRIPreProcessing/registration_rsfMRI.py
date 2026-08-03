@@ -14,6 +14,8 @@ import shutil as sh
 import subprocess
 import shlex
 import logging
+import nibabel as nib
+import numpy as np
 from calendar import month_name
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -78,6 +80,46 @@ def run_command(command):
         raise
 
 
+def mask_registered_atlas_with_bet(atlas_path, bet_path):
+    """Set atlas labels to zero wherever the fMRI BET is zero."""
+    atlas_image = nib.load(atlas_path)
+    bet_image = nib.load(bet_path)
+
+    atlas_data = np.asanyarray(atlas_image.dataobj)
+    bet_data = np.asanyarray(bet_image.dataobj)
+    if atlas_data.shape != bet_data.shape:
+        raise ValueError(
+            "Registered atlas and fMRI BET shapes differ: "
+            f"{atlas_data.shape} vs {bet_data.shape}."
+        )
+
+    # Non-finite BET values are not valid brain voxels and are treated like
+    # background. The registered atlas grid itself remains unchanged.
+    bet_foreground = np.isfinite(bet_data) & (bet_data != 0)
+    masked_atlas_data = np.array(atlas_data, copy=True)
+    masked_atlas_data[~bet_foreground] = 0
+
+    masked_atlas = nib.Nifti1Image(
+        masked_atlas_data,
+        atlas_image.affine,
+        atlas_image.header.copy(),
+    )
+    qform, qform_code = atlas_image.get_qform(coded=True)
+    sform, sform_code = atlas_image.get_sform(coded=True)
+    if qform is not None:
+        masked_atlas.set_qform(qform, code=int(qform_code))
+    if sform is not None:
+        masked_atlas.set_sform(sform, code=int(sform_code))
+    nib.save(masked_atlas, atlas_path)
+
+    LOGGER.info(
+        "Masked registered atlas %s with fMRI BET %s (%d atlas voxels set to zero)",
+        atlas_path,
+        bet_path,
+        int(np.count_nonzero((atlas_data != 0) & ~bet_foreground)),
+    )
+
+
 # Parameters passed to regSIG2rsfMRI:
 # inputVolume: Preprocessed rsfMRI reference image and final target space.
 # T2data: Individual brain-extracted T2 image (*/anat/*Bet.nii.gz).
@@ -90,9 +132,10 @@ def run_command(command):
 # dref: If True, use existing results from the related DWI directory.
 # outfile: Directory for registered images, matrix and log file.
 # use_atlas_mask: If True, mask T2data with a dilated brain_anno mask.
+# mask_atlas_with_bet: If True, zero registered labels outside the fMRI BET.
 
 def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
-                  bsplineMatrix, dref, outfile, use_atlas_mask=False):
+                  bsplineMatrix, dref, outfile, use_atlas_mask=False, mask_atlas_with_bet=False):
     prefix = os.path.basename(inputVolume).split('.')[0]
     outputT2w = os.path.join(outfile, prefix + '_T2w.nii.gz') #T2 in fMRI space
     outputFmriT2w = os.path.join(outfile, prefix + '_fMRI_inT2.nii.gz') #fMRI in T2 space nifti
@@ -188,6 +231,12 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
             "-inter", "0",
             "-res", outputAnno,
         ])
+
+        # Restrict atlas labels to the brain foreground actually retained by
+        # fMRI BET. This is applied before creating the compatible atlas copies
+        # below, so all registered label outputs receive the same mask.
+        if mask_atlas_with_bet:
+            mask_registered_atlas_with_bet(outputAnno, inputVolume)
     ''' Atlas files are all the same the following steps are redundant but are kept for clarity and future flexibility
     # resample split annotation
     outputAnnoSplit = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_AnnoSplit.nii.gz')
@@ -329,6 +378,8 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--dtiasRef', action='store_true', help='use DTI as reference if data quality is low. (Currently commented out/unused)')
     parser.add_argument('--atlas-mask-t2', action='store_true',
                         help='mask the T2 BET with the registered atlas annotation before registration')
+    parser.add_argument('--mask-atlas-with-bet', action='store_true',
+                        help='set registered atlas labels to zero wherever the fMRI BET is zero')
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask', nargs='?', type=str,
                         default=None)
     parser.add_argument('-s', '--splitAnno', help='Split annotations atlas', nargs='?', type=str,
@@ -437,6 +488,7 @@ if __name__ == "__main__":
         args.dtiasRef,
         outfile,
         use_atlas_mask=args.atlas_mask_t2,
+        mask_atlas_with_bet=args.mask_atlas_with_bet,
     )
     sys.stdout = sys.__stdout__
 
