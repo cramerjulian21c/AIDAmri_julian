@@ -1113,9 +1113,9 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # T2 PREPROCESSING (preProcessing_T2.py)
+    # T2 OPTIONS
     # ============================================================
-    t2 = parser.add_argument_group("T2 preprocessing (preProcessing_T2.py)")
+    t2 = parser.add_argument_group("T2 options")
     t2.add_argument(
         "--t2-bias-method",
         choices=["skip", "mico", "ants"],
@@ -1159,9 +1159,9 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # DWI PREPROCESSING (preProcessing_DTI.py)
+    # DWI OPTIONS
     # ============================================================
-    dwi = parser.add_argument_group("DWI preprocessing (preProcessing_DTI.py)")
+    dwi = parser.add_argument_group("DWI options")
     dwi.add_argument(
         "--dwi-denoiser",
         choices=["patch2self"],
@@ -1209,9 +1209,9 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # fMRI PREPROCESSING (preProcessing_fMRI.py)
+    # fMRI OPTIONS
     # ============================================================
-    func = parser.add_argument_group("fMRI preprocessing (preProcessing_fMRI.py)")
+    func = parser.add_argument_group("fMRI options")
     func.add_argument(
         "--func-bias-method",
         choices=["skip", "ants"],
@@ -1266,9 +1266,9 @@ if __name__ == "__main__":
     )
 
     # ============================================================
-    # T2MAP PREPROCESSING (preProcessing_T2MAP.py)
+    # T2MAP OPTIONS
     # ============================================================
-    t2map = parser.add_argument_group("T2map preprocessing (preProcessing_T2MAP.py)")
+    t2map = parser.add_argument_group("T2map options")
     t2map.add_argument(
         "--t2map-bet",
         choices=["skip", "bet", "bet4animal"],
