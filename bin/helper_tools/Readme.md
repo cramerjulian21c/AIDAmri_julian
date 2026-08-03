@@ -154,6 +154,7 @@ Key behavior:
 - Writes a log file into the output root.
 - If every NIfTI already matches the target orientation, the script logs this
   and aborts before copying the whole tree.
+- Processes files in parallel. By default, it uses `50%` of available CPU cores.
 
 Usage:
 
@@ -177,8 +178,13 @@ Options:
 - `-n`: non-interactive mode. Requires `-t`.
 - `-l LOGFILE`: log filename written into the output root. Default:
   `reorient_log.txt`.
+- `-p`, `--cpu-percent`: CPU percentage for parallel processing, for example
+  `50` or `50%`. Default: `50`.
 
 ## Quality Control and Data Summaries
+
+Generated report timestamps use German local time in the format
+`DD Month YYYY HH:MM:SS CET/CEST`, for example `15 July 2026 15:14:12 CEST`.
 
 ### `adjustbvecRep.py`
 
@@ -255,8 +261,23 @@ Behavior:
 
 ### `batch_qc_reports.py`
 
-Importable Python helper module for project-level QC reports. It does not define
-a command-line interface.
+Python helper module for project-level QC reports. 
+Direct command-line use:
+
+```bash
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report bet --n-slices 7
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report registration
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --custom-parameter t2-frac=0.1 --custom-parameter t2-bias-method=mico
+```
+
+`--report` accepts `all` (the default), `bet`, or `registration`. `--n-slices`
+sets the number of slices per orientation and defaults to `10`. Repeat
+`--custom-parameter NAME=VALUE` to record processing parameters in the custom
+parameters section of the generated HTML reports. Parameter names without a
+leading `--` are normalized automatically.
+
+Import use:
 
 Available functions:
 
