@@ -14,7 +14,7 @@ environment so that relative paths to `lib/` resources resolve as expected.
 | `MRI_files_summarizer.py` | Create a CSV inventory of NIfTI files found below `**/brkraw/*.nii.gz`. |
 | `ReorientBatch.py` | Reorient NIfTI files to a target orientation while mirroring the input folder tree. |
 | `adjustbvecRep.py` | Repeat DWI `.bval` and `.bvec` sidecars to match the number of image volumes. |
-| `batch_qc_reports.py` | Python helper module for project-level BET and registration HTML QC reports. |
+| `batch_qc_reports.py` | Python helper module for project-level BET, registration, and corpus callosum HTML QC reports. |
 | `crop_T2.py` | Crop T2-weighted images in x/y using FSL through Nipype and write quick-look PNGs. |
 | `fieldmap_json_edit.py` | Populate BIDS fieldmap JSON `IntendedFor` entries for DWI and functional files. |
 | `getAtlasRegionSize_BIDS.py` | Compute per-annotation atlas region volumes in BIDS-style folder trees. |
@@ -268,11 +268,12 @@ Direct command-line use:
 python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data
 python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report bet --n-slices 7
 python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report registration
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report cc
 python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --custom-parameter t2-frac=0.1 --custom-parameter t2-bias-method=mico
 ```
 
-`--report` accepts `all` (the default), `bet`, or `registration`. `--n-slices`
-sets the number of slices per orientation and defaults to `10`. Repeat
+`--report` accepts `all` (the default), `bet`, `registration`, or `cc`.
+`--n-slices` sets the number of slices per orientation and defaults to `10`. Repeat
 `--custom-parameter NAME=VALUE` to record processing parameters in the custom
 parameters section of the generated HTML reports. Parameter names without a
 leading `--` are normalized automatically.
@@ -282,7 +283,11 @@ Import use:
 Available functions:
 
 ```python
-from batch_qc_reports import build_bet_qc_report, build_registration_qc_report
+from batch_qc_reports import (
+    build_bet_qc_report,
+    build_cc_qc_report,
+    build_registration_qc_report,
+)
 
 build_bet_qc_report(
     "/path/to/proc_data",
@@ -290,6 +295,11 @@ build_bet_qc_report(
     custom_parameters=[("--t2-frac", 0.1)],
 )
 build_registration_qc_report(
+    "/path/to/proc_data",
+    n_slices=10,
+    custom_parameters=[("--t2-frac", 0.1)],
+)
+build_cc_qc_report(
     "/path/to/proc_data",
     n_slices=10,
     custom_parameters=[("--t2-frac", 0.1)],
@@ -316,6 +326,12 @@ Registration report behavior:
 - Overlays annotation labels on the BET image.
 - Writes PNGs and `registration_report.html` under
   `<project_dir>/Report/Registration/`.
+
+Corpus callosum report behavior:
+
+- Uses the same BET/`*_AnnoSplit_parental.nii.gz` pairs as the registration report.
+- Filters the annotation overlay to atlas labels `891` and `892` only.
+- Writes PNGs and `cc_report.html` under `<project_dir>/Report/CC/`.
 
 ## T2 Cropping
 
