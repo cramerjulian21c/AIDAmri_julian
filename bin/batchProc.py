@@ -328,6 +328,8 @@ def executeScripts(currentPath_wData, dataFormat, step, cfg):
                         command += " --atlas-mask-t2"
                     if cfg.get("func_mask_atlas_with_bet") is True:
                         command += " --mask-atlas-with-bet"
+                    if cfg.get("func_registration_method") is not None:
+                        command += f' --registration-method {cfg["func_registration_method"]}'
                     result = run_subprocess(command,dataFormat,step)
                     if result != 0:
                         errorList.append(result)
@@ -1099,6 +1101,13 @@ if __name__ == "__main__":
         action="store_true",
         default=None,
         help="Set registered fMRI atlas labels to zero wherever the fMRI BET is zero"
+    )
+    func.add_argument(
+        "--func-registration-method",
+        choices=["flirt", "niftyreg"],
+        type=str.lower,
+        default=None,
+        help="Linear T2-to-fMRI registration backend; omitted uses flirt"
     )
     func.add_argument(
         "--func-suppress-superior-noise",

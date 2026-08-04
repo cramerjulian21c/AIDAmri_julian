@@ -133,15 +133,23 @@ def mask_registered_atlas_with_bet(atlas_path, bet_path):
 # outfile: Directory for registered images, matrix and log file.
 # use_atlas_mask: If True, mask T2data with a dilated brain_anno mask.
 # mask_atlas_with_bet: If True, zero registered labels outside the fMRI BET.
+# registration_method: Linear T2-to-fMRI registration backend (flirt or niftyreg).
 
 def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, splitAnno_rsfMRI, anno_rsfMRI,
-                  bsplineMatrix, dref, outfile, use_atlas_mask=False, mask_atlas_with_bet=False):
+                  bsplineMatrix, dref, outfile, use_atlas_mask=False, mask_atlas_with_bet=False,
+                  registration_method="flirt"):
+    if registration_method not in {"flirt", "niftyreg"}:
+        raise ValueError(
+            "registration_method must be either 'flirt' or 'niftyreg', "
+            f"got {registration_method!r}."
+        )
+
     prefix = os.path.basename(inputVolume).split('.')[0]
     outputT2w = os.path.join(outfile, prefix + '_T2w.nii.gz') #T2 in fMRI space
     outputFmriT2w = os.path.join(outfile, prefix + '_fMRI_inT2.nii.gz') #fMRI in T2 space nifti
     outputAff = os.path.join(outfile, prefix + 'transMatrixAff.txt') #t2_to_fmri aff
     outputFlirtFmriToT2 = os.path.join(outfile, prefix + 'transMatrixFlirt_fMRItoT2.mat')
-    outputFlirtAff = os.path.join(outfile, prefix + 'transMatrixFlirt.mat')#inverse fmri to t2 mat
+    outputFlirtAff = os.path.join(outfile, prefix + 'transMatrixFlirt.mat') #T2-to-fMRI FLIRT matrix
     outputComposite = os.path.join(outfile, prefix + 'Matrixcomp_rsfMRI.nii.gz')#composite of t2 bspline and t2_to_fmri aff
 
     if dref:
@@ -162,48 +170,63 @@ def regSIG2rsfMRI(inputVolume, T2data, brain_template, brain_anno, splitAnno, sp
                 run_command(command_args)
             T2data = maskedT2
 
-        # Estimate the transform in the fMRI-to-T2 direction so the
-        # higher-resolution, higher-contrast T2 defines the reference.
-        run_command([
-            "flirt",
-            "-in", inputVolume,
-            "-ref", T2data,
-            "-out", outputFmriT2w,#fMRI in T2 space nifti
-            "-omat", outputFlirtFmriToT2,#fmri to t2 space matrix
-            "-dof", "6",
-            "-cost", "corratio",
-        ])
-
-        # The remaining pipeline needs the opposite T2-to-fMRI direction.
-        run_command([
-            "convert_xfm",
-            "-omat", outputFlirtAff,#inverse fmri to t2 mat
-            "-inverse", outputFlirtFmriToT2,#fmri to t2 space matrix
-        ])
-
-        # Create the usual T2-in-fMRI-space QC image with the inverted matrix.
-        run_command([
-            "flirt",
-            "-in", T2data,
-            "-ref", inputVolume,
-            "-out", outputT2w,#T2 in fMRI space nifti
-            "-init", outputFlirtAff,#inverse fmri to t2 mat
-            "-applyxfm", #doesnt use the fMRI intensity for optimization and doesnt do a new registration
-            "-interp", "trilinear", #trilinear interpolation for continuing MRI intensities
-        ])
-
-        # FLIRT and NiftyReg use different affine matrix conventions. Convert
-        # the inverted T2-to-fMRI matrix before composing it with the NiftyReg
-        # B-spline transformation.
-        run_command([
-            "reg_transform",
-            "-flirtAff2NR",
-            outputFlirtAff,#inverse fmri to t2 mat
-            inputVolume,
-            T2data,
-            outputAff,#t2_to_fmri aff
-        ])
         outputAnno = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_Anno.nii.gz')
+
+        LOGGER.info("Using %s for linear T2-to-fMRI registration", registration_method)
+        if registration_method == "flirt":
+            # Estimate the transform in the fMRI-to-T2 direction so the
+            # higher-resolution, higher-contrast T2 defines the reference.
+            run_command([
+                "flirt",
+                "-in", inputVolume,
+                "-ref", T2data,
+                "-out", outputFmriT2w,  # fMRI in T2 space
+                "-omat", outputFlirtFmriToT2,  # fMRI-to-T2 FLIRT matrix
+                "-dof", "6",
+                "-cost", "corratio",
+            ])
+
+            # The remaining pipeline needs the opposite T2-to-fMRI direction.
+            run_command([
+                "convert_xfm",
+                "-omat", outputFlirtAff,  # T2-to-fMRI FLIRT matrix
+                "-inverse", outputFlirtFmriToT2,
+            ])
+
+            # Create the usual T2-in-fMRI-space QC image with the inverted matrix.
+            run_command([
+                "flirt",
+                "-in", T2data,
+                "-ref", inputVolume,
+                "-out", outputT2w,
+                "-init", outputFlirtAff,
+                "-applyxfm",  # apply the saved matrix without new optimisation
+                "-interp", "trilinear",
+            ])
+
+            # FLIRT and NiftyReg use different affine conventions. Convert the
+            # T2-to-fMRI matrix because the common code below composes it with
+            # the existing NiftyReg B-spline transformation.
+            run_command([
+                "reg_transform",
+                "-flirtAff2NR",
+                outputFlirtAff,
+                inputVolume,  # FLIRT reference image
+                T2data,  # FLIRT input/floating image
+                outputAff,
+            ])
+        else:
+            # NiftyReg directly registers the floating T2 image to the fMRI
+            # reference grid and writes a NiftyReg affine, so no matrix-format
+            # conversion is necessary before the common composition below.
+            run_command([
+                "reg_aladin",
+                "-ref", inputVolume,
+                "-flo", T2data,
+                "-res", outputT2w,
+                "-rigOnly",
+                "-aff", outputAff,
+            ])
 
         # Compose the T2-to-rsfMRI affine with the existing non-linear
         # atlas-to-T2 transformation. NiftyReg composes as
@@ -380,6 +403,8 @@ if __name__ == "__main__":
                         help='mask the T2 BET with the registered atlas annotation before registration')
     parser.add_argument('--mask-atlas-with-bet', action='store_true',
                         help='set registered atlas labels to zero wherever the fMRI BET is zero')
+    parser.add_argument('--registration-method', choices=['flirt', 'niftyreg'], default='flirt',
+                        help='linear T2-to-fMRI registration backend (default: flirt)')
     parser.add_argument('-r', '--referenceDay', help='Reference Stroke mask', nargs='?', type=str,
                         default=None)
     parser.add_argument('-s', '--splitAnno', help='Split annotations atlas', nargs='?', type=str,
@@ -489,6 +514,7 @@ if __name__ == "__main__":
         outfile,
         use_atlas_mask=args.atlas_mask_t2,
         mask_atlas_with_bet=args.mask_atlas_with_bet,
+        registration_method=args.registration_method,
     )
     sys.stdout = sys.__stdout__
 
