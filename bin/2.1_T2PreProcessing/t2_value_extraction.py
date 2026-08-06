@@ -51,6 +51,9 @@ def load_label_lookup(label_file):
 
     return labels
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
+
 def getOutfile(atlas_type, img_file, suffix):
     imgName = os.path.basename(img_file)
     if imgName.endswith(".nii.gz"):
@@ -123,6 +126,7 @@ if __name__ == '__main__':
     image_file = args.input
     if not os.path.exists(image_file):
         sys.exit(f"Error: '{image_file}' is not an existing image nii-file.")
+    start_output_tracking(os.path.dirname(image_file), "anat", "registration")
 
     img_data = nii.load(image_file)
     img = img_data.get_fdata()  # Using get_fdata() for compatibility

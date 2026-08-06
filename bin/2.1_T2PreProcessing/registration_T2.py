@@ -17,6 +17,7 @@ import subprocess
 import shlex
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
 from common.script_logging import setup_script_logging
 
 
@@ -266,6 +267,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    start_output_tracking(outfile, "anat", "registration")
     setup_script_logging(outfile, "registration.log")
 
     stroke_mask = find_mask(inputVolume)
@@ -291,4 +293,3 @@ if __name__ == "__main__":
         #os.system('python adjust_orientation.py -i '+ str(img) + ' -t ' + currentFile[0])
         
     print("Registration completed")
-

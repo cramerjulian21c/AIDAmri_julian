@@ -19,6 +19,7 @@ import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 from common.script_logging import setup_script_logging
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
@@ -249,6 +250,7 @@ if __name__ == "__main__":
     horizontal_gradient = args.horizontal_gradient
     bias_method = args.bias_method
     outputPath = os.path.dirname(inputFile)
+    start_output_tracking(outputPath, "func", "preprocessing")
     setup_script_logging(outputPath, "preprocess.log")
 
     if args.bet == "bet":

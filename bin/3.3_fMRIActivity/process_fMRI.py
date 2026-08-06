@@ -25,6 +25,7 @@ import json
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
@@ -327,6 +328,7 @@ if __name__ == "__main__":
         input_file = args.input
     if not os.path.exists(input_file):
         sys.exit(f"Error: input file does not exist: {input_file}")
+    start_output_tracking(os.path.dirname(input_file), "func", "processing")
 
     mcfFile_name = startProcess(
         input_file,

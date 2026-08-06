@@ -30,7 +30,8 @@ import shlex
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 DEFAULT_SIGMA_ATLAS = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz')
-
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
 
 def regRef2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_parental,anno_parental,bsplineMatrix,outfile):
 
@@ -158,6 +159,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    start_output_tracking(outfile, "t2map", "registration")
 
     # find related  data
     pathT2, pathStroke_mask, pathAnno, pathTemplate, bsplineMatrix = find_relatedData(os.path.dirname(outfile))
