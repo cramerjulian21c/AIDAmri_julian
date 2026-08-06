@@ -28,6 +28,9 @@ import glob
 import subprocess
 import shlex
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
+
 def regABA2T2map(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile):
 
     outputT2w = os.path.join(outfile, os.path.basename(inputVolume).split('.')[0] + '_T2w.nii.gz')
@@ -152,6 +155,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    start_output_tracking(outfile, "t2map", "registration")
 
     # find related  data
     pathT2, pathStroke_mask, pathAnno, pathTemplate, bsplineMatrix = find_relatedData(os.path.dirname(outfile))
@@ -233,4 +237,3 @@ if __name__ == "__main__":
         continue
 
     print("Registration completed")
-

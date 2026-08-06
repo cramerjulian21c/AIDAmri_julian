@@ -18,6 +18,7 @@ import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 
@@ -206,6 +207,7 @@ if __name__ == "__main__":
     horizontal_gradient = args.horizontal_gradient
     bias_method = args.bias_method
     output_path = os.path.dirname(input_file)
+    start_output_tracking(output_path, "t2map", "preprocessing")
 
     if args.bet == "bet":
         print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")

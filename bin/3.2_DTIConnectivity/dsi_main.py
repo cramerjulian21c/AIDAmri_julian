@@ -18,6 +18,9 @@ import gzip
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
+
 
 def enable_process_log(log_path):
     # Mirror stdout/stderr into a dataset-local log file so debugging works the
@@ -178,6 +181,7 @@ if __name__ == '__main__':
     connectivity_dir_name = r'connectivity'
 
     dwi_dir = os.path.dirname(args.file_in)
+    start_output_tracking(dwi_dir, "dwi", "processing")
     process_log = os.path.join(dwi_dir, "process.log")
     if should_enable_process_log():
         enable_process_log(process_log)

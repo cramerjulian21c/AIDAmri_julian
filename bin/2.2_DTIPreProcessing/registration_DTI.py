@@ -29,6 +29,7 @@ import subprocess
 import shlex
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
 from common.script_logging import setup_script_logging
 
 def regABA2DTI(inputVolume,stroke_mask,refStroke_mask,T2data, brain_template,brain_anno, splitAnno,splitAnno_rsfMRI,anno_rsfMRI,bsplineMatrix,outfile):
@@ -368,6 +369,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume)) #this will be something like E:\CRC_data\proc_data\sub-GVsT3c3m2\ses-Baseline
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    start_output_tracking(outfile, "dwi", "registration")
     setup_script_logging(outfile, "registration.log")
 
     # find related  data

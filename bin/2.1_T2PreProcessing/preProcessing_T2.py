@@ -24,6 +24,7 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 from common.script_logging import setup_script_logging
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
@@ -220,6 +221,7 @@ if __name__ == "__main__":
     input_file = args.input_file
     if not os.path.exists(input_file):
         sys.exit(f"Error: input file does not exist: {input_file}")
+    start_output_tracking(os.path.dirname(input_file), "anat", "preprocessing")
     setup_script_logging(os.path.dirname(input_file), "preprocess.log")
 
     frac = args.frac
