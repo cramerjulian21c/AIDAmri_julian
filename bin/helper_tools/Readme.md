@@ -21,6 +21,7 @@ environment so that relative paths to `lib/` resources resolve as expected.
 | `getAtlasRegionSize_noBIDS.py` | Compute aggregate atlas region volumes for non-BIDS T2w folders. |
 | `plot_sourcedata_niftis.py` | Generate per-session NIfTI mosaic PNGs and an HTML QC report. |
 | `remove_carets_spaces.sh` | Remove spaces and caret (`^`) characters from a plain-text file. |
+| `Reset_proc_folder.py` | Safely reset processing stages using runtime-generated output manifests. |
 | `reset_naming.py` | Clean Bruker `subject` files before PV-to-NIfTI conversion. |
 
 ## Dependencies
@@ -131,6 +132,52 @@ Outputs are written in the current working directory:
 
 Note: despite the historical script comments, the current implementation does
 not remove underscores and does not overwrite the original `subject` file.
+
+## Manifest-based Processing Reset
+
+### `Reset_proc_folder.py`
+
+The anat, dwi, func, and t2map stage scripts take a recursive snapshot of their
+modality folder before processing and update a dataset-specific manifest when
+the process exits. For example, `sub-01/ses-02/anat` uses
+`.sub-01_ses-02_anat_aidamri_manifest.json`. Tracking also works when a stage script is
+launched directly instead of through `batchProc.py`.
+
+The reset helper deletes only files registered as newly created by stages after
+the requested target phase. Existing files that were modified are reported but
+not deleted. Files without any manifest assignment are explicitly reported as
+not managed and are preserved. Tracked directories are removed only when
+empty. Before planning a reset, every existing folder of the selected mode must
+contain its readable, correctly named manifest. For example,
+`--mode anat` validates only `anat` folders and does not inspect manifests in
+`dwi`, `func`, or `t2map`. A missing or invalid manifest in the selected mode
+aborts the complete reset before anything is deleted.
+
+At the end of every dry-run or applied reset, warnings and unmanaged files are
+shown again in a consolidated summary grouped by subject, session, and mode.
+Modified files and unmanaged files are listed with their full paths so the user
+can inspect and handle them manually.
+
+Always inspect a dry-run first:
+
+```bash
+python Reset_proc_folder.py /path/to/project \
+  --mode anat \
+  --phase preprocessing \
+  --dry-run
+```
+
+Apply the displayed plan interactively:
+
+```bash
+python Reset_proc_folder.py /path/to/project \
+  --mode anat \
+  --phase preprocessing
+```
+
+Use `--yes` only for an already reviewed automated invocation. Projects that
+were processed before manifest tracking was introduced cannot be reconstructed
+retrospectively; their untracked files remain untouched.
 
 ## Reorientation
 

@@ -1,0 +1,557 @@
+"""Reset AIDAmri modality folders using runtime-generated output manifests."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path, PurePosixPath
+
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import (
+    MANIFEST_SUFFIX,
+    MODES,
+    load_manifest,
+    manifest_filename,
+    manifest_path,
+    snapshot,
+    write_manifest,
+)
+
+
+STAGE_ORDER = {
+    "base": 0,
+    "preprocessing": 1,
+    "registration": 2,
+    "processing": 3,
+}
+
+
+class ResetError(RuntimeError):
+    """Raised when a safe manifest-based reset cannot be planned."""
+
+
+def normalize_phase(phase):
+    aliases = {
+        "base": "base",
+        "grundzustand": "base",
+        "convert2nifti": "base",
+        "preprocess": "preprocessing",
+        "preprocessing": "preprocessing",
+        "register": "registration",
+        "registration": "registration",
+        "process": "processing",
+        "processing": "processing",
+    }
+    try:
+        return aliases[phase.strip().lower()]
+    except (AttributeError, KeyError) as exc:
+        raise ValueError(f"Unsupported phase: {phase!r}") from exc
+
+
+def is_bids_like(project_root):
+    """Return whether *project_root* contains a BIDS-like subject structure."""
+    project_root = Path(project_root)
+    if not project_root.is_dir():
+        print(f"Error: project_root '{project_root}' is not a directory.")
+        return False
+
+    subject_dirs = [
+        path for path in project_root.iterdir()
+        if path.name.startswith("sub-") and path.is_dir()
+    ]
+    if not subject_dirs:
+        print("Error: No 'sub-*' directories found below project_root.")
+        return False
+
+    modalities = {"anat", "dwi", "fmap", "func", "t2map"}
+    for subject_dir in subject_dirs:
+        subject_children = [path for path in subject_dir.iterdir() if path.is_dir()]
+        if any(path.name in modalities for path in subject_children):
+            return True
+        for session_dir in subject_children:
+            if not session_dir.name.startswith("ses-"):
+                continue
+            if any(
+                path.is_dir() and path.name in modalities
+                for path in session_dir.iterdir()
+            ):
+                return True
+
+    print(
+        "Error: No typical BIDS modality directories were found below "
+        "the 'sub-*' directories."
+    )
+    return False
+
+
+def has_any_brkraw(project_root):
+    for _, dir_names, _ in os.walk(project_root):
+        if "brkraw" in dir_names:
+            return True
+    return False
+
+
+def find_modality_dirs(project_root, mode):
+    modality_dirs = []
+    for root, dir_names, _ in os.walk(project_root):
+        if os.path.basename(root) == mode:
+            modality_dirs.append(Path(root).resolve())
+            dir_names.clear()
+    return sorted(modality_dirs)
+
+
+def validate_project_manifests(project_root, mode):
+    """Validate manifests in existing folders of the selected modality only."""
+    if mode not in MODES:
+        raise ValueError(f"Unsupported modality: {mode!r}")
+    errors = []
+    for folder in find_modality_dirs(project_root, mode):
+        try:
+            expected_path = manifest_path(folder, mode)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not expected_path.is_file():
+            errors.append(f"Manifest is missing: {expected_path}")
+            continue
+        try:
+            manifest = load_manifest(folder, mode)
+        except (OSError, ValueError) as exc:
+            errors.append(f"Manifest is invalid: {expected_path}: {exc}")
+            continue
+        if manifest.get("mode") != mode:
+            errors.append(
+                f"Manifest mode mismatch: {expected_path} "
+                f"(found {manifest.get('mode')!r}, expected {mode!r})"
+            )
+    return errors
+
+
+def _manifest_path(folder, relative_path):
+    """Resolve a manifest path lexically without following dataset symlinks."""
+    if not isinstance(relative_path, str):
+        raise ResetError(f"Manifest path is not a string: {relative_path!r}")
+    path = PurePosixPath(relative_path)
+    if not path.parts or path.is_absolute() or ".." in path.parts:
+        raise ResetError(f"Unsafe path in manifest: {relative_path!r}")
+    return folder.joinpath(*path.parts)
+
+
+def _stage_is_after(stage, target_phase):
+    if stage not in STAGE_ORDER:
+        raise ResetError(f"Unknown stage in manifest: {stage!r}")
+    return STAGE_ORDER[stage] > STAGE_ORDER[target_phase]
+
+
+def build_reset_plan(project_root, mode, phase):
+    """Build a non-mutating deletion plan from all matching manifests."""
+    project_root = Path(project_root).resolve()
+    phase = normalize_phase(phase)
+    plans = []
+
+    for folder in find_modality_dirs(project_root, mode):
+        warnings = []
+        if not (folder / "brkraw").is_dir():
+            warnings.append("No direct brkraw directory; modality folder is skipped.")
+            plans.append({"folder": folder, "skip": True, "warnings": warnings})
+            continue
+
+        try:
+            manifest = load_manifest(folder, mode)
+        except (OSError, ValueError) as exc:
+            warnings.append(f"Manifest cannot be read: {exc}")
+            plans.append({"folder": folder, "skip": True, "warnings": warnings})
+            continue
+
+        if manifest is None:
+            warnings.append(
+                f"No {manifest_filename(folder, mode)} found; "
+                "nothing is deleted for safety."
+            )
+            plans.append({"folder": folder, "skip": True, "warnings": warnings})
+            continue
+        if manifest.get("mode") != mode:
+            warnings.append(
+                f"Manifest belongs to {manifest.get('mode')!r}, expected {mode!r}; "
+                "folder is skipped."
+            )
+            plans.append({"folder": folder, "skip": True, "warnings": warnings})
+            continue
+
+        files = set()
+        directories = set()
+        selected_stages = []
+        missing_files = set()
+        missing_directories = set()
+        modified_files = []
+
+        # Classify current files against all recorded stage ownership.
+        all_created_files = {
+            path
+            for stage_data in manifest.get("stages", {}).values()
+            for path in stage_data.get("created_files", [])
+        }
+        all_modified_files = {
+            path
+            for stage_data in manifest.get("stages", {}).values()
+            for path in stage_data.get("modified_files", [])
+        }
+        current_files = set(snapshot(folder)["files"])
+        unknown_files = sorted(
+            _manifest_path(folder, relative_path)
+            for relative_path in current_files - all_created_files - all_modified_files
+        )
+
+        initial_stage = manifest.get("tracking_started_before_stage")
+        if initial_stage in STAGE_ORDER:
+            earliest_safe_phase = STAGE_ORDER[initial_stage] - 1
+            if STAGE_ORDER[phase] < earliest_safe_phase:
+                warnings.append(
+                    "Manifest tracking started only before stage "
+                    f"{initial_stage!r}. Older untracked artifacts are preserved; "
+                    "the requested target state may be incomplete."
+                )
+
+        for stage, stage_data in manifest.get("stages", {}).items():
+            if not _stage_is_after(stage, phase):
+                continue
+            selected_stages.append(stage)
+
+            modified = stage_data.get("modified_files", [])
+            modified_files.extend(
+                (stage, _manifest_path(folder, relative_path))
+                for relative_path in modified
+            )
+
+            for relative_path in stage_data.get("created_files", []):
+                path = _manifest_path(folder, relative_path)
+                if os.path.lexists(path):
+                    if path.is_dir() and not path.is_symlink():
+                        warnings.append(
+                            f"Path recorded as a file is now a directory and is preserved: {path}"
+                        )
+                    else:
+                        files.add(path)
+                else:
+                    missing_files.add(relative_path)
+
+            for relative_path in stage_data.get("created_directories", []):
+                path = _manifest_path(folder, relative_path)
+                if os.path.lexists(path):
+                    if path.is_dir() and not path.is_symlink():
+                        directories.add(path)
+                    else:
+                        warnings.append(
+                            f"Path recorded as a directory is no longer a directory and is preserved: {path}"
+                        )
+                else:
+                    missing_directories.add(relative_path)
+
+        plans.append(
+            {
+                "folder": folder,
+                "skip": False,
+                "manifest": manifest,
+                "phase": phase,
+                "selected_stages": selected_stages,
+                "files": sorted(files),
+                "directories": sorted(
+                    directories,
+                    key=lambda path: len(path.parts),
+                    reverse=True,
+                ),
+                "missing_files": missing_files,
+                "missing_directories": missing_directories,
+                "modified_files": sorted(modified_files, key=lambda item: (item[0], item[1])),
+                "unknown_files": unknown_files,
+                "runtime_warnings": [],
+                "warnings": warnings,
+            }
+        )
+
+    return plans
+
+
+def print_reset_plan(plans, mode, phase):
+    print(f"\nReset plan for mode={mode}, target phase={phase}")
+    print("Only later-stage artifacts registered in the manifest will be deleted.")
+
+    for plan in plans:
+        print(f"\n{plan['folder']}")
+        for warning in plan["warnings"]:
+            print(f"  [WARNING] {warning}")
+        if plan["skip"]:
+            continue
+        for stage, path in plan["modified_files"]:
+            print(
+                f"  [WARNING] Existing file modified by {stage} cannot be "
+                f"restored: {path}"
+            )
+        for path in plan["unknown_files"]:
+            print(f"  [INFO] Not managed by the manifest; preserved: {path}")
+        for path in plan["files"]:
+            print(f"  Delete file: {path}")
+        for path in plan["directories"]:
+            print(f"  Remove directory if empty: {path}")
+        if not plan["files"] and not plan["directories"]:
+            print("  No artifacts to delete.")
+
+
+def _folder_identity(folder):
+    subject = next(
+        (part for part in reversed(folder.parts) if part.startswith("sub-")),
+        "sub-UNKNOWN",
+    )
+    session = next(
+        (part for part in reversed(folder.parts) if part.startswith("ses-")),
+        "ses-none",
+    )
+    return subject, session, folder.name
+
+
+def print_issue_summary(plans):
+    """Print all actionable warnings and information grouped by dataset."""
+    affected_plans = [
+        plan
+        for plan in plans
+        if (
+            plan.get("warnings")
+            or plan.get("modified_files")
+            or plan.get("unknown_files")
+            or plan.get("runtime_warnings")
+        )
+    ]
+
+    print("\nWarning and information summary")
+    if not affected_plans:
+        print("No warnings or unmanaged files found.")
+        return
+
+    for plan in affected_plans:
+        subject, session, mode = _folder_identity(plan["folder"])
+        print(f"\n{subject} | {session} | {mode}")
+        for warning in plan.get("warnings", []):
+            print(f"  [WARNING] {warning}")
+        for stage, path in plan.get("modified_files", []):
+            print(
+                f"  [WARNING] Modified by {stage}; original content cannot be "
+                f"restored: {path}"
+            )
+        for path in plan.get("unknown_files", []):
+            print(f"  [INFO] Not managed by the manifest; review manually: {path}")
+        for warning in plan.get("runtime_warnings", []):
+            print(f"  [WARNING] {warning}")
+
+    print(
+        "\nReview the listed files and directories and intervene manually "
+        "if necessary."
+    )
+
+
+def _relative(folder, path):
+    return path.relative_to(folder).as_posix()
+
+
+def _update_manifest_after_reset(plan, deleted_files, removed_directories):
+    # Remove only entries that were successfully deleted or were already absent.
+    manifest = plan["manifest"]
+    folder = plan["folder"]
+    deleted_relative = {_relative(folder, path) for path in deleted_files}
+    removed_relative = {_relative(folder, path) for path in removed_directories}
+    deleted_relative |= plan["missing_files"]
+    removed_relative |= plan["missing_directories"]
+
+    for stage in plan["selected_stages"]:
+        stage_data = manifest.get("stages", {}).get(stage, {})
+        stage_data["created_files"] = [
+            path for path in stage_data.get("created_files", [])
+            if path not in deleted_relative
+        ]
+        stage_data["created_directories"] = [
+            path for path in stage_data.get("created_directories", [])
+            if path not in removed_relative
+        ]
+        if not any(
+            stage_data.get(key)
+            for key in ("created_files", "created_directories", "modified_files")
+        ):
+            manifest["stages"].pop(stage, None)
+
+    write_manifest(folder, manifest)
+
+
+def apply_reset_plan(plans):
+    deleted_files_count = 0
+    deleted_dirs_count = 0
+
+    for plan in plans:
+        if plan["skip"]:
+            continue
+        deleted_files = set()
+        removed_directories = set()
+
+        for path in plan["files"]:
+            try:
+                path.unlink()
+                deleted_files.add(path)
+                deleted_files_count += 1
+                print(f"Deleted: {path}")
+            except FileNotFoundError:
+                deleted_files.add(path)
+            except OSError as exc:
+                warning = f"File could not be deleted: {path}: {exc}"
+                plan["runtime_warnings"].append(warning)
+                print(f"[WARNING] {warning}")
+
+        # Never remove a tracked directory recursively; unknown content must survive.
+        for path in plan["directories"]:
+            try:
+                path.rmdir()
+                removed_directories.add(path)
+                deleted_dirs_count += 1
+                print(f"Removed empty directory: {path}")
+            except FileNotFoundError:
+                removed_directories.add(path)
+            except OSError:
+                warning = (
+                    f"Directory is not empty and is preserved: {path}. "
+                    "Unmanaged content was not deleted."
+                )
+                plan["runtime_warnings"].append(warning)
+                print(f"[WARNING] {warning}")
+
+        _update_manifest_after_reset(plan, deleted_files, removed_directories)
+
+    print("\nDone!")
+    print(f"Deleted files: {deleted_files_count}")
+    print(f"Removed empty directories: {deleted_dirs_count}")
+    print_issue_summary(plans)
+
+
+def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
+    """Plan and optionally apply a safe manifest-based project reset."""
+    if mode not in MODES:
+        raise ValueError("mode must be 'anat', 'dwi', 'func', or 't2map'")
+    manifest_errors = validate_project_manifests(project_root, mode)
+    if manifest_errors:
+        raise ResetError(
+            "Not all existing folders of the selected modality have a valid manifest:\n"
+            + "\n".join(manifest_errors)
+        )
+    phase = normalize_phase(phase)
+    plans = build_reset_plan(project_root, mode, phase)
+    print_reset_plan(plans, mode, phase)
+    if dry_run:
+        print_issue_summary(plans)
+    else:
+        apply_reset_plan(plans)
+    return plans
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Reset anat, dwi, func, or t2map folders using manifests generated "
+            "by the processing scripts."
+        ),
+        epilog=(
+            "Example: %(prog)s /path/to/project --mode anat "
+            "--phase preprocessing --dry-run"
+        ),
+    )
+    parser.add_argument(
+        "project_root",
+        metavar="PROJECT_ROOT",
+        help="Path to the BIDS-like project directory",
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        required=True,
+        choices=MODES,
+        help="Modality to reset",
+    )
+    parser.add_argument(
+        "-p",
+        "--phase",
+        required=True,
+        choices=("base", "preprocessing", "registration", "processing"),
+        help="Processing phase to reset to",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without changing anything",
+    )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Skip the confirmation prompt",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    project_root = Path(args.project_root).expanduser().resolve()
+
+    print(f"Checking BIDS structure below: {project_root}")
+    if not is_bids_like(project_root):
+        print("Aborting because the BIDS structure is missing or invalid.")
+        return 1
+    manifest_errors = validate_project_manifests(project_root, args.mode)
+    if manifest_errors:
+        print(
+            f"Error: Not all existing {args.mode} folders contain a valid "
+            f"*{MANIFEST_SUFFIX}:"
+        )
+        for error in manifest_errors:
+            print(f"  - {error}")
+        print("Aborted: No changes were made.")
+        return 1
+    if not has_any_brkraw(project_root):
+        print("Error: No 'brkraw' directory was found below project_root.")
+        return 1
+
+    try:
+        plans = build_reset_plan(project_root, args.mode, args.phase)
+    except ResetError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    print_reset_plan(plans, args.mode, args.phase)
+    if args.dry_run:
+        print("\nDry-run: No changes were made.")
+        print_issue_summary(plans)
+        return 0
+
+    has_actions = any(
+        not plan["skip"] and (plan["files"] or plan["directories"])
+        for plan in plans
+    )
+    if not has_actions:
+        print("\nNo deletion operations are required.")
+        print_issue_summary(plans)
+        return 0
+
+    if not args.yes:
+        try:
+            confirmation = input("Type 'Yes' to apply this reset plan: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted: No changes were made.")
+            print_issue_summary(plans)
+            return 1
+        if confirmation != "Yes":
+            print("Aborted: No changes were made.")
+            print_issue_summary(plans)
+            return 1
+
+    apply_reset_plan(plans)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
