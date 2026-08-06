@@ -22,6 +22,10 @@ import create_seed_rois
 import fsl_mean_ts
 from pathlib import Path 
 import json
+#makes sure to import bet.py
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
@@ -281,7 +285,7 @@ def copyRawPhysioData(file_name,i32_Path):
     studyName = (Path(os.path.dirname(os.path.dirname(file_name))).name).split("-")[1]
     physioPath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(file_name)))),'Physio')
     scanid = None
-    
+
     relatedPhysioData = []
     if not os.path.exists(json_file):
         print("Error: '%s' has no metadata JSON file for physio lookup." % (file_name,))
@@ -422,6 +426,7 @@ if __name__ == "__main__":
         input_file = args.input
     if not os.path.exists(input_file):
         sys.exit(f"Error: input file does not exist: {input_file}")
+    start_output_tracking(os.path.dirname(input_file), "func", "processing")
 
     bet_file = args.bet_file
     if _is_bet_file(input_file):

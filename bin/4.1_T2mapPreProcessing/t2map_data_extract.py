@@ -6,6 +6,8 @@ import sys
 
 import nibabel as nii
 import numpy as np
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 DEFAULT_LABEL_FILE = os.path.join(
@@ -119,6 +121,7 @@ if __name__ == "__main__":
     if not os.path.exists(image_file):
         sys.exit("Error: '%s' is not an existing image NIfTI file." % (image_file,))
 
+    start_output_tracking(os.path.dirname(image_file), "t2map", "processing")
     if not os.path.exists(args.label_file):
         sys.exit("Error: '%s' is not an existing label file." % (args.label_file,))
 

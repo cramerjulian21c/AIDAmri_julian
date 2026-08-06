@@ -20,6 +20,9 @@ from calendar import month_name
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
+
 
 LOGGER = logging.getLogger(__name__)
 DISABLE_LOG_ENV = "AIDAMRI_DISABLE_SCRIPT_LOG"
@@ -435,6 +438,7 @@ if __name__ == "__main__":
     outfile = os.path.join(os.path.dirname(inputVolume))
     if not os.path.exists(outfile):
         os.makedirs(outfile)
+    start_output_tracking(outfile, "func", "registration")
     setup_logging(outfile)
 
 

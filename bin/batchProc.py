@@ -32,6 +32,8 @@ import time
 import sys
 import shutil
 
+from common.artifact_manifest import OutputTracker
+
 FATAL_LIP_HEADER_EXIT_CODE = 86
 REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 AIDAMRI_GIT_INFO_SOURCES = [
@@ -148,6 +150,10 @@ def run_subprocess(command, datatype, step, anat_process=False):
                     if a.endswith(".nii") or a.endswith(".nii.gz")), command_args[-1])
 
     base = _log_base_from_input(inp)
+    #starting aidamri output tracker
+    output_tracker = None
+    if datatype in {"anat", "dwi", "func", "t2map"}:
+        output_tracker = OutputTracker.start(base, datatype, step)
 
     # default location
     log_file = os.path.join(base, f"{step}.log")
@@ -201,6 +207,9 @@ def run_subprocess(command, datatype, step, anat_process=False):
     except Exception as e:
         logging.error(f'Error while executing the command: {command_args} Errorcode: {str(e)}')
         raise
+    finally:
+        if output_tracker is not None:
+            output_tracker.finalize()
     
 
 def executeScripts(currentPath_wData, dataFormat, step, cfg):
