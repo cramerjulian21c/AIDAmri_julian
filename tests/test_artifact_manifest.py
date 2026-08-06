@@ -5,10 +5,10 @@ to process MRI data. It verifies that newly created and modified files are
 recorded in the modality-specific manifest and that ``Reset_proc_folder.py``
 deletes only registered outputs from stages after the selected target phase.
 
-The tests also cover manifest naming, T2map support, preservation of unmanaged
-files, and missing manifests inside or outside the selected modality. Every
-test uses an automatically created temporary directory; real project data is
-never read or modified.
+The tests also cover manifest naming, T2map support, safe restoration of base
+NIfTI files, preservation of unmanaged files, and missing manifests inside or
+outside the selected modality. Every test uses an automatically created
+temporary directory; real project data is never read or modified.
 
 Run from the repository root::
 
@@ -127,6 +127,93 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertTrue(plans[0]["skip"])
             self.assertTrue(unknown.exists())
 
+    def test_base_reset_restores_original_nifti_before_deleting_backup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            folder = project / "sub-01" / "ses-01" / "anat"
+            folder.mkdir(parents=True)
+            raw = folder / "input_T2w.nii.gz"
+            raw.write_text("original", encoding="utf-8")
+
+            preprocessing = OutputTracker.start(folder, "anat", "preprocessing")
+            brkraw = folder / "brkraw"
+            brkraw.mkdir()
+            backup = brkraw / raw.name
+            backup.write_text("original", encoding="utf-8")
+            raw.write_text("preprocessed", encoding="utf-8")
+            preprocessing_output = folder / "preprocessed.nii.gz"
+            preprocessing_output.write_text("pre", encoding="utf-8")
+            preprocessing_log = folder / "preprocess.log"
+            preprocessing_log.write_text("first run", encoding="utf-8")
+            preprocessing.finalize()
+
+            # On later runs a stage-owned log is both created and modified in
+            # the accumulated manifest. It is still safe to delete on reset.
+            preprocessing = OutputTracker.start(folder, "anat", "preprocessing")
+            raw.write_text("preprocessed again", encoding="utf-8")
+            preprocessing_log.write_text("second run", encoding="utf-8")
+            preprocessing.finalize()
+
+            registration = OutputTracker.start(folder, "anat", "registration")
+            registration_output = folder / "registered.nii.gz"
+            registration_output.write_text("reg", encoding="utf-8")
+            registration.finalize()
+
+            plans = build_reset_plan(project, "anat", "base")
+            self.assertEqual(plans[0]["restore_files"], [(backup, raw)])
+            self.assertEqual(plans[0]["restore_errors"], [])
+            self.assertEqual(plans[0]["modified_files"], [])
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                succeeded = apply_reset_plan(plans)
+
+            self.assertTrue(succeeded)
+            self.assertEqual(raw.read_text(encoding="utf-8"), "original")
+            self.assertFalse(backup.exists())
+            self.assertFalse(brkraw.exists())
+            self.assertFalse(preprocessing_output.exists())
+            self.assertFalse(preprocessing_log.exists())
+            self.assertFalse(registration_output.exists())
+            self.assertEqual(load_manifest(folder, "anat")["stages"], {})
+
+    def test_base_reset_aborts_before_changes_when_backup_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            folder = project / "sub-01" / "ses-01" / "anat"
+            folder.mkdir(parents=True)
+            raw = folder / "input_T2w.nii.gz"
+            raw.write_text("original", encoding="utf-8")
+
+            tracker = OutputTracker.start(folder, "anat", "preprocessing")
+            brkraw = folder / "brkraw"
+            brkraw.mkdir()
+            backup = brkraw / raw.name
+            backup.write_text("original", encoding="utf-8")
+            raw.write_text("preprocessed", encoding="utf-8")
+            output = folder / "preprocessed.nii.gz"
+            output.write_text("keep until safe reset", encoding="utf-8")
+            tracker.finalize()
+            backup.unlink()
+
+            report = io.StringIO()
+            with contextlib.redirect_stdout(report):
+                exit_code = reset_main(
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "anat",
+                        "--phase",
+                        "base",
+                        "--yes",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("Base reset aborted", report.getvalue())
+            self.assertEqual(raw.read_text(encoding="utf-8"), "preprocessed")
+            self.assertTrue(output.exists())
+
     def test_t2map_outputs_can_be_tracked(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             folder = Path(temp_dir) / "sub-test" / "ses-test" / "t2map"
@@ -151,6 +238,9 @@ class ArtifactManifestTests(unittest.TestCase):
             (dwi / "brkraw").mkdir(parents=True)
 
             tracker = OutputTracker.start(anat, "anat", "preprocessing")
+            tracker.finalize()
+
+            tracker = OutputTracker.start(anat, "anat", "registration")
             anat_output = anat / "preprocessed.nii.gz"
             anat_output.write_text("pre", encoding="utf-8")
             tracker.finalize()
@@ -165,7 +255,15 @@ class ArtifactManifestTests(unittest.TestCase):
 
             with contextlib.redirect_stdout(io.StringIO()):
                 exit_code = reset_main(
-                    [str(project), "--mode", "anat", "--phase", "base", "--yes"]
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "anat",
+                        "--phase",
+                        "preprocessing",
+                        "--yes",
+                    ]
                 )
 
             self.assertEqual(exit_code, 0)
@@ -181,7 +279,15 @@ class ArtifactManifestTests(unittest.TestCase):
 
             with contextlib.redirect_stdout(io.StringIO()):
                 exit_code = reset_main(
-                    [str(project), "--mode", "dwi", "--phase", "base", "--yes"]
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "dwi",
+                        "--phase",
+                        "base",
+                        "--yes",
+                    ]
                 )
 
             self.assertEqual(exit_code, 1)

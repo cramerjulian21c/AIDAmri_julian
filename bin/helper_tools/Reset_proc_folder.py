@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 
@@ -26,6 +28,7 @@ STAGE_ORDER = {
     "registration": 2,
     "processing": 3,
 }
+NIFTI_SUFFIXES = (".nii", ".nii.gz")
 
 
 class ResetError(RuntimeError):
@@ -145,6 +148,66 @@ def _stage_is_after(stage, target_phase):
     return STAGE_ORDER[stage] > STAGE_ORDER[target_phase]
 
 
+def _is_nifti_path(path):
+    return str(path).endswith(NIFTI_SUFFIXES)
+
+
+def _build_base_restore_plan(folder, manifest):
+    """Find and validate preprocessing backups required for a base reset."""
+    restore_files = []
+    errors = []
+    preprocessing = manifest.get("stages", {}).get("preprocessing", {})
+    created_files = set(preprocessing.get("created_files", []))
+    modified_niftis = {
+        path
+        for path in preprocessing.get("modified_files", [])
+        if _is_nifti_path(path)
+    }
+
+    backup_paths = {
+        path
+        for path in created_files
+        if len(PurePosixPath(path).parts) == 2
+        and PurePosixPath(path).parts[0] == "brkraw"
+        and _is_nifti_path(path)
+    }
+
+    # Every modified preprocessing input needs its matching original backup.
+    for relative_destination in modified_niftis:
+        backup_relative = f"brkraw/{PurePosixPath(relative_destination).name}"
+        if backup_relative not in backup_paths:
+            errors.append(
+                f"No registered brkraw backup for modified input: "
+                f"{folder / relative_destination}"
+            )
+
+    for relative_source in sorted(backup_paths):
+        source = _manifest_path(folder, relative_source)
+        destination = folder / PurePosixPath(relative_source).name
+        if not source.is_file() or source.is_symlink():
+            errors.append(f"Backup is missing or is not a regular file: {source}")
+            continue
+        if destination.is_symlink() or destination.is_dir():
+            errors.append(
+                f"Restore destination is not a regular file path: {destination}"
+            )
+            continue
+        restore_files.append((source, destination))
+
+    if modified_niftis and not restore_files:
+        errors.append(f"No usable brkraw NIfTI backup found in: {folder / 'brkraw'}")
+
+    return restore_files, errors
+
+
+def _base_restore_errors(plans):
+    return [
+        f"{plan['folder']}: {error}"
+        for plan in plans
+        for error in plan.get("restore_errors", [])
+    ]
+
+
 def build_reset_plan(project_root, mode, phase):
     """Build a non-mutating deletion plan from all matching manifests."""
     project_root = Path(project_root).resolve()
@@ -155,7 +218,18 @@ def build_reset_plan(project_root, mode, phase):
         warnings = []
         if not (folder / "brkraw").is_dir():
             warnings.append("No direct brkraw directory; modality folder is skipped.")
-            plans.append({"folder": folder, "skip": True, "warnings": warnings})
+            plans.append(
+                {
+                    "folder": folder,
+                    "skip": True,
+                    "warnings": warnings,
+                    "restore_errors": (
+                        ["A base reset requires a direct brkraw directory."]
+                        if phase == "base"
+                        else []
+                    ),
+                }
+            )
             continue
 
         try:
@@ -186,6 +260,8 @@ def build_reset_plan(project_root, mode, phase):
         missing_files = set()
         missing_directories = set()
         modified_files = []
+        restore_files = []
+        restore_errors = []
 
         # Classify current files against all recorded stage ownership.
         all_created_files = {
@@ -205,6 +281,21 @@ def build_reset_plan(project_root, mode, phase):
         )
 
         initial_stage = manifest.get("tracking_started_before_stage")
+        if phase == "base":
+            if initial_stage != "preprocessing":
+                restore_errors.append(
+                    "Manifest tracking did not start before preprocessing; "
+                    "a complete base restore cannot be verified."
+                )
+            planned_restores, validation_errors = _build_base_restore_plan(
+                folder, manifest
+            )
+            restore_files.extend(planned_restores)
+            restore_errors.extend(validation_errors)
+
+        restored_destinations = {
+            _relative(folder, destination) for _, destination in restore_files
+        }
         if initial_stage in STAGE_ORDER:
             earliest_safe_phase = STAGE_ORDER[initial_stage] - 1
             if STAGE_ORDER[phase] < earliest_safe_phase:
@@ -223,6 +314,7 @@ def build_reset_plan(project_root, mode, phase):
             modified_files.extend(
                 (stage, _manifest_path(folder, relative_path))
                 for relative_path in modified
+                if relative_path not in restored_destinations
             )
 
             for relative_path in stage_data.get("created_files", []):
@@ -249,6 +341,18 @@ def build_reset_plan(project_root, mode, phase):
                 else:
                     missing_directories.add(relative_path)
 
+        # Do not warn about modified paths that this reset already handles by
+        # restoring their original or deleting them as owned stage artifacts.
+        handled_modified_paths = restored_destinations | {
+            _relative(folder, path) for path in files
+        }
+        modified_files = [
+            (stage, path)
+            for stage, path in modified_files
+            if _relative(folder, path) not in handled_modified_paths
+            and os.path.lexists(path)
+        ]
+
         plans.append(
             {
                 "folder": folder,
@@ -264,7 +368,13 @@ def build_reset_plan(project_root, mode, phase):
                 ),
                 "missing_files": missing_files,
                 "missing_directories": missing_directories,
-                "modified_files": sorted(modified_files, key=lambda item: (item[0], item[1])),
+                "restore_files": restore_files,
+                "restore_errors": restore_errors,
+                "restored_destinations": restored_destinations,
+                "modified_files": sorted(
+                    modified_files,
+                    key=lambda item: (item[0], item[1]),
+                ),
                 "unknown_files": unknown_files,
                 "runtime_warnings": [],
                 "warnings": warnings,
@@ -282,8 +392,13 @@ def print_reset_plan(plans, mode, phase):
         print(f"\n{plan['folder']}")
         for warning in plan["warnings"]:
             print(f"  [WARNING] {warning}")
+        for error in plan.get("restore_errors", []):
+            print(f"  [ERROR] Base restore blocked: {error}")
         if plan["skip"]:
             continue
+        for source, destination in plan["restore_files"]:
+            print(f"  Restore original NIfTI: {source} -> {destination}")
+        restore_sources = {source for source, _ in plan["restore_files"]}
         for stage, path in plan["modified_files"]:
             print(
                 f"  [WARNING] Existing file modified by {stage} cannot be "
@@ -292,10 +407,11 @@ def print_reset_plan(plans, mode, phase):
         for path in plan["unknown_files"]:
             print(f"  [INFO] Not managed by the manifest; preserved: {path}")
         for path in plan["files"]:
-            print(f"  Delete file: {path}")
+            if path not in restore_sources:
+                print(f"  Delete file: {path}")
         for path in plan["directories"]:
             print(f"  Remove directory if empty: {path}")
-        if not plan["files"] and not plan["directories"]:
+        if not plan["restore_files"] and not plan["files"] and not plan["directories"]:
             print("  No artifacts to delete.")
 
 
@@ -318,6 +434,7 @@ def print_issue_summary(plans):
         for plan in plans
         if (
             plan.get("warnings")
+            or plan.get("restore_errors")
             or plan.get("modified_files")
             or plan.get("unknown_files")
             or plan.get("runtime_warnings")
@@ -334,6 +451,8 @@ def print_issue_summary(plans):
         print(f"\n{subject} | {session} | {mode}")
         for warning in plan.get("warnings", []):
             print(f"  [WARNING] {warning}")
+        for error in plan.get("restore_errors", []):
+            print(f"  [ERROR] Base restore blocked: {error}")
         for stage, path in plan.get("modified_files", []):
             print(
                 f"  [WARNING] Modified by {stage}; original content cannot be "
@@ -362,6 +481,7 @@ def _update_manifest_after_reset(plan, deleted_files, removed_directories):
     removed_relative = {_relative(folder, path) for path in removed_directories}
     deleted_relative |= plan["missing_files"]
     removed_relative |= plan["missing_directories"]
+    restored_relative = plan.get("restored_destinations", set())
 
     for stage in plan["selected_stages"]:
         stage_data = manifest.get("stages", {}).get(stage, {})
@@ -373,6 +493,10 @@ def _update_manifest_after_reset(plan, deleted_files, removed_directories):
             path for path in stage_data.get("created_directories", [])
             if path not in removed_relative
         ]
+        stage_data["modified_files"] = [
+            path for path in stage_data.get("modified_files", [])
+            if path not in restored_relative and path not in deleted_relative
+        ]
         if not any(
             stage_data.get(key)
             for key in ("created_files", "created_directories", "modified_files")
@@ -382,9 +506,78 @@ def _update_manifest_after_reset(plan, deleted_files, removed_directories):
     write_manifest(folder, manifest)
 
 
+def _restore_base_files(plan):
+    """Atomically replace working NIfTIs while retaining backups until success."""
+    restored_files = set()
+
+    for source, destination in plan.get("restore_files", []):
+        temporary_path = None
+        try:
+            # Recheck immediately before copying in case the dataset changed
+            # after the reset plan was displayed.
+            if not source.is_file() or source.is_symlink():
+                raise OSError("backup is missing or is not a regular file")
+            if destination.is_symlink() or destination.is_dir():
+                raise OSError("restore destination is not a regular file path")
+
+            file_descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{destination.name}.restore.",
+                suffix=".tmp",
+                dir=destination.parent,
+            )
+            os.close(file_descriptor)
+            temporary_path = Path(temporary_name)
+
+            # The temporary file lives beside the destination, so os.replace()
+            # performs one atomic replacement even when the destination exists.
+            shutil.copy2(source, temporary_path)
+            with temporary_path.open("rb") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, destination)
+            restored_files.add(destination)
+            print(f"Restored original NIfTI: {source} -> {destination}")
+        except OSError as exc:
+            warning = (
+                f"Original NIfTI could not be restored: {source} -> "
+                f"{destination}: {exc}"
+            )
+            plan["runtime_warnings"].append(warning)
+            print(f"[ERROR] {warning}")
+            return False, restored_files
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except FileNotFoundError:
+                    pass
+
+    return True, restored_files
+
+
 def apply_reset_plan(plans):
+    restore_errors = _base_restore_errors(plans)
+    if restore_errors:
+        print("\nBase reset aborted: Required originals cannot be restored.")
+        print_issue_summary(plans)
+        return False
+
     deleted_files_count = 0
     deleted_dirs_count = 0
+    restored_files_count = 0
+
+    # Restore all modality folders before deleting any backup or derived file.
+    for plan in plans:
+        if plan["skip"] or not plan.get("restore_files"):
+            continue
+        restore_succeeded, restored_files = _restore_base_files(plan)
+        restored_files_count += len(restored_files)
+        if not restore_succeeded:
+            print(
+                "\nBase reset stopped before deleting registered artifacts. "
+                "All brkraw backups were preserved."
+            )
+            print_issue_summary(plans)
+            return False
 
     for plan in plans:
         if plan["skip"]:
@@ -425,9 +618,12 @@ def apply_reset_plan(plans):
         _update_manifest_after_reset(plan, deleted_files, removed_directories)
 
     print("\nDone!")
+    if any(plan.get("phase") == "base" for plan in plans):
+        print(f"Restored original NIfTI files: {restored_files_count}")
     print(f"Deleted files: {deleted_files_count}")
     print(f"Removed empty directories: {deleted_dirs_count}")
     print_issue_summary(plans)
+    return True
 
 
 def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
@@ -443,6 +639,12 @@ def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
     phase = normalize_phase(phase)
     plans = build_reset_plan(project_root, mode, phase)
     print_reset_plan(plans, mode, phase)
+    restore_errors = _base_restore_errors(plans)
+    if restore_errors:
+        raise ResetError(
+            "Base reset cannot safely restore all original NIfTI files:\n"
+            + "\n".join(restore_errors)
+        )
     if dry_run:
         print_issue_summary(plans)
     else:
@@ -457,13 +659,14 @@ def parse_args(argv=None):
             "by the processing scripts."
         ),
         epilog=(
-            "Example: %(prog)s /path/to/project --mode anat "
+            "Example: %(prog)s --input /path/to/project --mode anat "
             "--phase preprocessing --dry-run"
         ),
     )
     parser.add_argument(
-        "project_root",
-        metavar="PROJECT_ROOT",
+        "-i",
+        "--input",
+        required=True,
         help="Path to the BIDS-like project directory",
     )
     parser.add_argument(
@@ -496,7 +699,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    project_root = Path(args.project_root).expanduser().resolve()
+    project_root = Path(args.input).expanduser().resolve()
 
     print(f"Checking BIDS structure below: {project_root}")
     if not is_bids_like(project_root):
@@ -523,13 +726,21 @@ def main(argv=None):
         return 1
 
     print_reset_plan(plans, args.mode, args.phase)
+    restore_errors = _base_restore_errors(plans)
+    if restore_errors:
+        print("\nBase reset aborted: Required originals cannot be restored.")
+        print("No changes were made.")
+        print_issue_summary(plans)
+        return 1
+
     if args.dry_run:
         print("\nDry-run: No changes were made.")
         print_issue_summary(plans)
         return 0
 
     has_actions = any(
-        not plan["skip"] and (plan["files"] or plan["directories"])
+        not plan["skip"]
+        and (plan.get("restore_files") or plan["files"] or plan["directories"])
         for plan in plans
     )
     if not has_actions:
@@ -549,8 +760,7 @@ def main(argv=None):
             print_issue_summary(plans)
             return 1
 
-    apply_reset_plan(plans)
-    return 0
+    return 0 if apply_reset_plan(plans) else 1
 
 
 if __name__ == "__main__":

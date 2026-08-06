@@ -161,7 +161,7 @@ can inspect and handle them manually.
 Always inspect a dry-run first:
 
 ```bash
-python Reset_proc_folder.py /path/to/project \
+python Reset_proc_folder.py --input /path/to/project \
   --mode anat \
   --phase preprocessing \
   --dry-run
@@ -170,7 +170,7 @@ python Reset_proc_folder.py /path/to/project \
 Apply the displayed plan interactively:
 
 ```bash
-python Reset_proc_folder.py /path/to/project \
+python Reset_proc_folder.py --input /path/to/project \
   --mode anat \
   --phase preprocessing
 ```
