@@ -90,6 +90,8 @@ class ArtifactManifestTests(unittest.TestCase):
                 folder / "sub-01_ses-01_T2w.json",
                 folder / "sub-01_ses-01_EPI.json",
                 folder / "sub-01_ses-01_dwi.json",
+                folder / "sub-01_ses-01_dwi.bvec",
+                folder / "sub-01_ses-01_dwi.bval",
             ]
             for sidecar in muted_sidecars:
                 sidecar.write_text("{}", encoding="utf-8")
@@ -152,6 +154,129 @@ class ArtifactManifestTests(unittest.TestCase):
 
             self.assertTrue(plans[0]["skip"])
             self.assertTrue(unknown.exists())
+
+    def test_delete_unmanaged_requires_opt_in_and_removes_unknown_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            folder = project / "sub-01" / "ses-01" / "anat"
+            folder.mkdir(parents=True)
+            raw = folder / "input_T2w.nii.gz"
+            raw.write_text("original", encoding="utf-8")
+
+            tracker = OutputTracker.start(folder, "anat", "preprocessing")
+            brkraw = folder / "brkraw"
+            brkraw.mkdir()
+            backup = brkraw / raw.name
+            backup.write_text("original", encoding="utf-8")
+            raw.write_text("preprocessed", encoding="utf-8")
+            known_output = folder / "known_output.nii.gz"
+            known_output.write_text("known", encoding="utf-8")
+            tracker.finalize()
+
+            sidecar = folder / "sub-01_ses-01_T2w.json"
+            sidecar.write_text("{}", encoding="utf-8")
+            bval = folder / "sub-01_ses-01_dwi.bval"
+            bval.write_text("0", encoding="utf-8")
+            stroke_mask = folder / "sub-01_ses-01_BetStroke_mask.nii.gz"
+            stroke_mask.write_text("stroke", encoding="utf-8")
+            manual_mask = folder / "manual_mask.nii.gz"
+            manual_mask.write_text("manual", encoding="utf-8")
+            nested_directory = folder / "custom" / "nested"
+            nested_directory.mkdir(parents=True)
+            note = nested_directory / "notes.txt"
+            note.write_text("manual", encoding="utf-8")
+            protected_directory = folder / "protected" / "nested"
+            protected_directory.mkdir(parents=True)
+            bvec = protected_directory / "sub-01_ses-01_dwi.bvec"
+            bvec.write_text("1 0 0", encoding="utf-8")
+            empty_directory = folder / "empty_custom_directory"
+            empty_directory.mkdir()
+
+            safe_plan = build_reset_plan(project, "anat", "processing")[0]
+            self.assertFalse(safe_plan["delete_unmanaged"])
+            self.assertIn(sidecar, safe_plan["unknown_files"])
+            self.assertNotIn(sidecar, safe_plan["files"])
+
+            dry_run_output = io.StringIO()
+            with contextlib.redirect_stdout(dry_run_output):
+                exit_code = reset_main(
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "anat",
+                        "--phase",
+                        "processing",
+                        "--delete-unmanaged",
+                        "--dry-run",
+                    ]
+                )
+            self.assertEqual(exit_code, 0)
+            dry_run_text = dry_run_output.getvalue()
+            self.assertIn("[DANGER] --delete-unmanaged is active", dry_run_text)
+            self.assertIn(
+                f"[INFO] Protected from --delete-unmanaged; preserved: {sidecar}",
+                dry_run_text,
+            )
+            self.assertIn(
+                f"[INFO] Protected from --delete-unmanaged; preserved: {stroke_mask}",
+                dry_run_text,
+            )
+            self.assertTrue(sidecar.exists())
+
+            plans = build_reset_plan(
+                project,
+                "anat",
+                "processing",
+                delete_unmanaged=True,
+            )
+            plan = plans[0]
+            self.assertEqual(
+                set(plan["unknown_files"]),
+                {sidecar, bval, stroke_mask, manual_mask, note, bvec},
+            )
+            self.assertEqual(
+                set(plan["protected_unmanaged_files"]),
+                {sidecar, bval, stroke_mask, bvec},
+            )
+            self.assertEqual(
+                set(plan["unmanaged_files_to_delete"]),
+                {manual_mask, note},
+            )
+            self.assertEqual(
+                set(plan["unknown_directories"]),
+                {
+                    folder / "custom",
+                    nested_directory,
+                    folder / "protected",
+                    protected_directory,
+                    empty_directory,
+                },
+            )
+            self.assertEqual(
+                set(plan["unmanaged_directories_to_delete"]),
+                {folder / "custom", nested_directory, empty_directory},
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                succeeded = apply_reset_plan(plans)
+
+            self.assertTrue(succeeded)
+            self.assertTrue(sidecar.exists())
+            self.assertTrue(bval.exists())
+            self.assertTrue(stroke_mask.exists())
+            self.assertTrue(bvec.exists())
+            self.assertTrue(protected_directory.exists())
+            self.assertTrue((folder / "protected").exists())
+            self.assertFalse(manual_mask.exists())
+            self.assertFalse(note.exists())
+            self.assertFalse(nested_directory.exists())
+            self.assertFalse((folder / "custom").exists())
+            self.assertFalse(empty_directory.exists())
+            self.assertTrue(raw.exists())
+            self.assertTrue(backup.exists())
+            self.assertTrue(known_output.exists())
+            self.assertIsNotNone(load_manifest(folder, "anat"))
 
     def test_base_reset_restores_original_nifti_before_deleting_backup(self):
         with tempfile.TemporaryDirectory() as temp_dir:

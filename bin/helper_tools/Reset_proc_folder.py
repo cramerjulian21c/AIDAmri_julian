@@ -30,7 +30,14 @@ STAGE_ORDER = {
     "processing": 3,
 }
 NIFTI_SUFFIXES = (".nii", ".nii.gz")
-MUTED_SUMMARY_SUFFIXES = ("_T2w.json", "_EPI.json", "_dwi.json")
+MUTED_SUMMARY_SUFFIXES = (
+    "_T2w.json",
+    "_EPI.json",
+    "_dwi.json",
+    ".bvec",
+    ".bval",
+)
+PROTECTED_UNMANAGED_SUFFIXES = MUTED_SUMMARY_SUFFIXES + ("Stroke_mask.nii.gz",)
 
 
 class ResetError(RuntimeError):
@@ -210,7 +217,33 @@ def _base_restore_errors(plans):
     ]
 
 
-def build_reset_plan(project_root, mode, phase):
+def _known_manifest_directories(manifest):
+    """Return explicit and implicit directory paths referenced by a manifest."""
+    known_directories = set()
+    referenced_paths = set()
+
+    for stage_data in manifest.get("stages", {}).values():
+        created_directories = set(stage_data.get("created_directories", []))
+        known_directories.update(created_directories)
+        referenced_paths.update(created_directories)
+        referenced_paths.update(stage_data.get("created_files", []))
+        referenced_paths.update(stage_data.get("modified_files", []))
+
+    # A directory containing a tracked path is implicitly known even if the
+    # directory itself existed before tracking began.
+    for relative_path in referenced_paths:
+        for parent in PurePosixPath(relative_path).parents:
+            if parent != PurePosixPath("."):
+                known_directories.add(parent.as_posix())
+
+    return known_directories
+
+
+def _is_protected_unmanaged_file(path):
+    return path.name.endswith(PROTECTED_UNMANAGED_SUFFIXES)
+
+
+def build_reset_plan(project_root, mode, phase, delete_unmanaged=False):
     """Build a non-mutating deletion plan from all matching manifests."""
     project_root = Path(project_root).resolve()
     phase = normalize_phase(phase)
@@ -276,11 +309,40 @@ def build_reset_plan(project_root, mode, phase):
             for stage_data in manifest.get("stages", {}).values()
             for path in stage_data.get("modified_files", [])
         }
-        current_files = set(snapshot(folder)["files"])
+        current_snapshot = snapshot(folder)
+        current_files = set(current_snapshot["files"])
         unknown_files = sorted(
             _manifest_path(folder, relative_path)
             for relative_path in current_files - all_created_files - all_modified_files
         )
+        known_directories = _known_manifest_directories(manifest)
+        unknown_directories = sorted(
+            (
+                _manifest_path(folder, relative_path)
+                for relative_path in (
+                    set(current_snapshot["directories"]) - known_directories
+                )
+            ),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        )
+        protected_unmanaged_files = [
+            path for path in unknown_files if _is_protected_unmanaged_file(path)
+        ]
+        unmanaged_files_to_delete = [
+            path for path in unknown_files if path not in protected_unmanaged_files
+        ]
+        protected_directory_paths = {
+            parent.as_posix()
+            for path in protected_unmanaged_files
+            for parent in PurePosixPath(_relative(folder, path)).parents
+            if parent != PurePosixPath(".")
+        }
+        unmanaged_directories_to_delete = [
+            path
+            for path in unknown_directories
+            if _relative(folder, path) not in protected_directory_paths
+        ]
 
         initial_stage = manifest.get("tracking_started_before_stage")
         if phase == "base":
@@ -383,6 +445,13 @@ def build_reset_plan(project_root, mode, phase):
                     key=lambda item: (item[0], item[1]),
                 ),
                 "unknown_files": unknown_files,
+                "unknown_directories": unknown_directories,
+                "protected_unmanaged_files": protected_unmanaged_files,
+                "unmanaged_files_to_delete": unmanaged_files_to_delete,
+                "unmanaged_directories_to_delete": unmanaged_directories_to_delete,
+                "delete_unmanaged": delete_unmanaged,
+                "deleted_unmanaged_files": [],
+                "removed_unmanaged_directories": [],
                 "runtime_warnings": [],
                 "warnings": warnings,
             }
@@ -394,6 +463,15 @@ def build_reset_plan(project_root, mode, phase):
 def print_reset_plan(plans, mode, phase):
     print(f"\nReset plan for mode={mode}, target phase={phase}")
     print("Only later-stage artifacts registered in the manifest will be deleted.")
+    if any(plan.get("delete_unmanaged") for plan in plans):
+        print(
+            "\n[DANGER] --delete-unmanaged is active. Files not known to the "
+            "manifest are selected for permanent deletion."
+        )
+        print(
+            "Protected BIDS sidecars, bvec/bval files, and *Stroke_mask.nii.gz "
+            "files are preserved; other unmanaged user data can be deleted."
+        )
 
     for plan in plans:
         print(f"\n{plan['folder']}")
@@ -411,8 +489,19 @@ def print_reset_plan(plans, mode, phase):
                 f"  [WARNING] Existing file modified by {stage} cannot be "
                 f"restored: {path}"
             )
-        for path in plan["unknown_files"]:
-            print(f"  [INFO] Not managed by the manifest; preserved: {path}")
+        if plan.get("delete_unmanaged"):
+            for path in plan.get("protected_unmanaged_files", []):
+                print(
+                    "  [INFO] Protected from --delete-unmanaged; preserved: "
+                    f"{path}"
+                )
+            for path in plan.get("unmanaged_files_to_delete", []):
+                print(f"  [DANGER] Delete unmanaged file: {path}")
+            for path in plan.get("unmanaged_directories_to_delete", []):
+                print(f"  [DANGER] Remove unmanaged directory if empty: {path}")
+        else:
+            for path in plan["unknown_files"]:
+                print(f"  [INFO] Not managed by the manifest; preserved: {path}")
         for path in plan["files"]:
             if path not in restore_sources:
                 print(f"  Delete file: {path}")
@@ -425,6 +514,13 @@ def print_reset_plan(plans, mode, phase):
             and not plan["files"]
             and not plan["directories"]
             and not plan.get("metadata_files")
+            and not (
+                plan.get("delete_unmanaged")
+                and (
+                    plan.get("unmanaged_files_to_delete")
+                    or plan.get("unmanaged_directories_to_delete")
+                )
+            )
         ):
             print("  No artifacts to delete.")
 
@@ -450,6 +546,14 @@ def _summary_unknown_files(plan):
     ]
 
 
+def _summary_protected_unmanaged_files(plan):
+    return [
+        path
+        for path in plan.get("protected_unmanaged_files", [])
+        if not path.name.endswith(MUTED_SUMMARY_SUFFIXES)
+    ]
+
+
 def print_issue_summary(plans):
     """Print all actionable warnings and information grouped by dataset."""
     affected_plans = [
@@ -459,7 +563,18 @@ def print_issue_summary(plans):
             plan.get("warnings")
             or plan.get("restore_errors")
             or plan.get("modified_files")
-            or _summary_unknown_files(plan)
+            or (
+                plan.get("delete_unmanaged")
+                and (
+                    plan.get("unmanaged_files_to_delete")
+                    or plan.get("unmanaged_directories_to_delete")
+                    or _summary_protected_unmanaged_files(plan)
+                )
+            )
+            or (
+                not plan.get("delete_unmanaged")
+                and _summary_unknown_files(plan)
+            )
             or plan.get("runtime_warnings")
         )
     ]
@@ -481,15 +596,52 @@ def print_issue_summary(plans):
                 f"  [WARNING] Modified by {stage}; original content cannot be "
                 f"restored: {path}"
             )
-        for path in _summary_unknown_files(plan):
-            print(f"  [INFO] Not managed by the manifest; review manually: {path}")
+        if plan.get("delete_unmanaged"):
+            deleted_unmanaged = set(plan.get("deleted_unmanaged_files", []))
+            removed_unmanaged = set(
+                plan.get("removed_unmanaged_directories", [])
+            )
+            for path in plan.get("unmanaged_files_to_delete", []):
+                action = (
+                    "deleted"
+                    if path in deleted_unmanaged
+                    else "selected for deletion"
+                )
+                print(f"  [WARNING] Unmanaged file {action}: {path}")
+            for path in _summary_protected_unmanaged_files(plan):
+                print(
+                    "  [INFO] Protected from --delete-unmanaged; preserved: "
+                    f"{path}"
+                )
+            for path in plan.get("unmanaged_directories_to_delete", []):
+                action = (
+                    "removed"
+                    if path in removed_unmanaged
+                    else "selected for removal if empty"
+                )
+                print(f"  [WARNING] Unmanaged directory {action}: {path}")
+        else:
+            for path in _summary_unknown_files(plan):
+                print(
+                    f"  [INFO] Not managed by the manifest; review manually: {path}"
+                )
         for warning in plan.get("runtime_warnings", []):
             print(f"  [WARNING] {warning}")
 
-    print(
-        "\nReview the listed files and directories and intervene manually "
-        "if necessary."
-    )
+    if any(
+        plan.get("unmanaged_files_to_delete")
+        or plan.get("unmanaged_directories_to_delete")
+        for plan in affected_plans
+    ):
+        print(
+            "\n[DANGER] Review every unmanaged path above. These files are "
+            "not recoverable through the manifest after deletion."
+        )
+    else:
+        print(
+            "\nReview the listed files and directories and intervene manually "
+            "if necessary."
+        )
 
 
 def _relative(folder, path):
@@ -598,6 +750,48 @@ def _delete_base_metadata(plan):
     return succeeded, deleted_count
 
 
+def _delete_unmanaged_paths(plan):
+    """Delete explicitly requested unmanaged files and then empty directories."""
+    deleted_files = 0
+    removed_directories = 0
+    succeeded = True
+
+    for path in plan.get("unmanaged_files_to_delete", []):
+        try:
+            path.unlink()
+            deleted_files += 1
+            plan["deleted_unmanaged_files"].append(path)
+            print(f"Deleted unmanaged file: {path}")
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            succeeded = False
+            warning = f"Unmanaged file could not be deleted: {path}: {exc}"
+            plan["runtime_warnings"].append(warning)
+            print(f"[WARNING] {warning}")
+
+    # Directories are never removed recursively. Deepest paths are attempted
+    # first, after their unmanaged files have been deleted individually.
+    for path in plan.get("unmanaged_directories_to_delete", []):
+        try:
+            path.rmdir()
+            removed_directories += 1
+            plan["removed_unmanaged_directories"].append(path)
+            print(f"Removed empty unmanaged directory: {path}")
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            succeeded = False
+            warning = (
+                f"Unmanaged directory could not be removed and is preserved: "
+                f"{path}: {exc}"
+            )
+            plan["runtime_warnings"].append(warning)
+            print(f"[WARNING] {warning}")
+
+    return succeeded, deleted_files, removed_directories
+
+
 def apply_reset_plan(plans):
     restore_errors = _base_restore_errors(plans)
     if restore_errors:
@@ -609,6 +803,8 @@ def apply_reset_plan(plans):
     deleted_dirs_count = 0
     restored_files_count = 0
     deleted_metadata_count = 0
+    deleted_unmanaged_files_count = 0
+    removed_unmanaged_dirs_count = 0
     reset_succeeded = True
 
     # Restore all modality folders before deleting any backup or derived file.
@@ -644,7 +840,17 @@ def apply_reset_plan(plans):
                 plan["runtime_warnings"].append(warning)
                 print(f"[WARNING] {warning}")
 
-        # Never remove a tracked directory recursively; unknown content must survive.
+        if plan.get("delete_unmanaged"):
+            (
+                unmanaged_succeeded,
+                unmanaged_files_count,
+                unmanaged_dirs_count,
+            ) = _delete_unmanaged_paths(plan)
+            deleted_unmanaged_files_count += unmanaged_files_count
+            removed_unmanaged_dirs_count += unmanaged_dirs_count
+            reset_succeeded = reset_succeeded and unmanaged_succeeded
+
+        # Tracked directories are also removed only when empty.
         for path in plan["directories"]:
             try:
                 path.rmdir()
@@ -673,11 +879,20 @@ def apply_reset_plan(plans):
         print(f"Deleted reset metadata files: {deleted_metadata_count}")
     print(f"Deleted files: {deleted_files_count}")
     print(f"Removed empty directories: {deleted_dirs_count}")
+    if any(plan.get("delete_unmanaged") for plan in plans):
+        print(f"Deleted unmanaged files: {deleted_unmanaged_files_count}")
+        print(f"Removed unmanaged directories: {removed_unmanaged_dirs_count}")
     print_issue_summary(plans)
     return reset_succeeded
 
 
-def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
+def reset_folder(
+    project_root,
+    mode="anat",
+    phase="base",
+    dry_run=False,
+    delete_unmanaged=False,
+):
     """Plan and optionally apply a safe manifest-based project reset."""
     if mode not in MODES:
         raise ValueError("mode must be 'anat', 'dwi', 'func', or 't2map'")
@@ -688,7 +903,12 @@ def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
             + "\n".join(manifest_errors)
         )
     phase = normalize_phase(phase)
-    plans = build_reset_plan(project_root, mode, phase)
+    plans = build_reset_plan(
+        project_root,
+        mode,
+        phase,
+        delete_unmanaged=delete_unmanaged,
+    )
     print_reset_plan(plans, mode, phase)
     restore_errors = _base_restore_errors(plans)
     if restore_errors:
@@ -740,6 +960,14 @@ def parse_args(argv=None):
         help="Show what would be deleted without changing anything",
     )
     parser.add_argument(
+        "--delete-unmanaged",
+        action="store_true",
+        help=(
+            "Permanently delete files and empty directories not known to the "
+            "manifest (dangerous)"
+        ),
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         action="store_true",
@@ -771,7 +999,12 @@ def main(argv=None):
         return 1
 
     try:
-        plans = build_reset_plan(project_root, args.mode, args.phase)
+        plans = build_reset_plan(
+            project_root,
+            args.mode,
+            args.phase,
+            delete_unmanaged=args.delete_unmanaged,
+        )
     except ResetError as exc:
         print(f"Error: {exc}")
         return 1
@@ -796,6 +1029,13 @@ def main(argv=None):
             or plan["files"]
             or plan["directories"]
             or plan.get("metadata_files")
+            or (
+                plan.get("delete_unmanaged")
+                and (
+                    plan.get("unmanaged_files_to_delete")
+                    or plan.get("unmanaged_directories_to_delete")
+                )
+            )
         )
         for plan in plans
     )
@@ -805,13 +1045,22 @@ def main(argv=None):
         return 0
 
     if not args.yes:
+        expected_confirmation = (
+            "DELETE UNMANAGED" if args.delete_unmanaged else "Yes"
+        )
+        prompt = (
+            "[DANGER] Type 'DELETE UNMANAGED' to delete all displayed "
+            "unmanaged paths: "
+            if args.delete_unmanaged
+            else "Type 'Yes' to apply this reset plan: "
+        )
         try:
-            confirmation = input("Type 'Yes' to apply this reset plan: ")
+            confirmation = input(prompt)
         except (EOFError, KeyboardInterrupt):
             print("\nAborted: No changes were made.")
             print_issue_summary(plans)
             return 1
-        if confirmation != "Yes":
+        if confirmation != expected_confirmation:
             print("Aborted: No changes were made.")
             print_issue_summary(plans)
             return 1
