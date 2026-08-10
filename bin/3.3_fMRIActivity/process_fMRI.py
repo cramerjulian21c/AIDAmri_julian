@@ -25,6 +25,7 @@ import json
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
@@ -305,7 +306,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--TR', default=TR, help='Current TR value')
     parser.add_argument('-c', '--cutOff-sec', default=cutOff_sec, help='High-pass filter cutoff sec')
     parser.add_argument('-f', '--FWHM', default=FWHM, help='Full width at half maximum')
-    parser.add_argument('-stc', '--slicetimecorrection', default="False", type=str, help='choose to perform slice time correction or not')
+    parser.add_argument('-stc', '--slicetimecorrection', action='store_true', help='perform slice time correction')
     parser.add_argument('--bet', choices=["skip", "bet", "bet4animal"], type=str.lower, default="bet",
                         help='Brain extraction method for fMRI process: skip, bet or bet4animal. Default: bet')
     parser.add_argument('--bet-frac', type=float, default=0.1, help='BET fractional intensity threshold')
@@ -315,10 +316,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.slicetimecorrection == "True":
-        stc = True
-    else:
-        stc = False
+    stc = args.slicetimecorrection
 
     sigma_labels = os.path.join(REPO_ROOT, 'lib', 'sigma', 'SIGMA_InVivo_Anatomical_Brain_Atlas_Labels.txt')
     labels = sigma_labels
@@ -330,6 +328,7 @@ if __name__ == "__main__":
         input_file = args.input
     if not os.path.exists(input_file):
         sys.exit(f"Error: input file does not exist: {input_file}")
+    start_output_tracking(os.path.dirname(input_file), "func", "processing")
 
     mcfFile_name = startProcess(
         input_file,

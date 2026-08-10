@@ -21,6 +21,7 @@ environment so that relative paths to `lib/` resources resolve as expected.
 | `getAtlasRegionSize_noBIDS.py` | Compute aggregate atlas region volumes for non-BIDS T2w folders. |
 | `plot_sourcedata_niftis.py` | Generate per-session NIfTI mosaic PNGs and an HTML QC report. |
 | `remove_carets_spaces.sh` | Remove spaces and caret (`^`) characters from a plain-text file. |
+| `Reset_proc_folder.py` | Safely reset processing stages using runtime-generated output manifests. |
 | `reset_naming.py` | Clean Bruker `subject` files before PV-to-NIfTI conversion. |
 
 ## Dependencies
@@ -132,6 +133,77 @@ Outputs are written in the current working directory:
 Note: despite the historical script comments, the current implementation does
 not remove underscores and does not overwrite the original `subject` file.
 
+## Manifest-based Processing Reset
+
+### `Reset_proc_folder.py`
+
+The anat, dwi, func, and t2map stage scripts take a recursive snapshot of their
+modality folder before processing and update a dataset-specific manifest when
+the process exits. For example, `sub-01/ses-02/anat` uses
+`.sub-01_ses-02_anat_aidamri_manifest.json`. Tracking also works when a stage script is
+launched directly instead of through `batchProc.py`.
+
+The reset helper deletes only files registered as newly created by stages after
+the requested target phase. Existing files that were modified are reported but
+not deleted. Files without any manifest assignment are explicitly reported as
+not managed and are preserved. Tracked directories are removed only when
+empty. Before planning a reset, every existing folder of the selected mode must
+contain its readable, correctly named manifest. For example,
+`--mode anat` validates only `anat` folders and does not inspect manifests in
+`dwi`, `func`, or `t2map`. A missing or invalid manifest in the selected mode
+aborts the complete reset before anything is deleted.
+
+Do not run a reset concurrently with preprocessing,
+registration, processing, or `batchProc.py`.
+
+At the end of every dry-run or applied reset, warnings and unmanaged files are
+shown again in a consolidated summary grouped by subject, session, and mode.
+Modified files and unmanaged files are listed with their full paths so the user
+can inspect and handle them manually. Standard BIDS sidecars matching
+`*_T2w.json`, `*_EPI.json`, `*_dwi.json`, `*.bvec`, or `*.bval` remain visible
+in the detailed reset plan but are not repeated in the final summary.
+In normal mode, individual `*Stroke_mask.nii.gz` paths remain visible in their
+folder details but are omitted from the final summary. A single message near
+the start reports how many selected modality folders contain preserved stroke
+masks.
+
+Use `--delete-unmanaged` only after reviewing a dry-run. It permanently deletes
+files that are not referenced anywhere in the manifest. Files matching
+`MUTED_SUMMARY_SUFFIXES` and `*Stroke_mask.nii.gz` are always protected from
+this deletion. Other manually supplied masks, notes, and user data can still be
+deleted. Unmanaged directories are never removed recursively: their files are
+deleted individually and the directories are removed only when empty. A
+directory containing a protected file is preserved.
+
+```bash
+python Reset_proc_folder.py --input /path/to/project \
+  --mode anat \
+  --phase preprocessing \
+  --delete-unmanaged \
+  --dry-run
+```
+
+Always inspect a dry-run first:
+
+```bash
+python Reset_proc_folder.py --input /path/to/project \
+  --mode anat \
+  --phase preprocessing \
+  --dry-run
+```
+
+Apply the displayed plan interactively:
+
+```bash
+python Reset_proc_folder.py --input /path/to/project \
+  --mode anat \
+  --phase preprocessing
+```
+
+Use `--yes` only for an already reviewed automated invocation. Projects that
+were processed before manifest tracking was introduced cannot be reconstructed
+retrospectively. By default, their untracked files remain untouched.
+
 ## Reorientation
 
 ### `ReorientBatch.py`
@@ -154,6 +226,7 @@ Key behavior:
 - Writes a log file into the output root.
 - If every NIfTI already matches the target orientation, the script logs this
   and aborts before copying the whole tree.
+- Processes files in parallel. By default, it uses `50%` of available CPU cores.
 
 Usage:
 
@@ -177,8 +250,13 @@ Options:
 - `-n`: non-interactive mode. Requires `-t`.
 - `-l LOGFILE`: log filename written into the output root. Default:
   `reorient_log.txt`.
+- `-p`, `--cpu-percent`: CPU percentage for parallel processing, for example
+  `50` or `50%`. Default: `50`.
 
 ## Quality Control and Data Summaries
+
+Generated report timestamps use German local time in the format
+`DD Month YYYY HH:MM:SS CET/CEST`, for example `15 July 2026 15:14:12 CEST`.
 
 ### `adjustbvecRep.py`
 
@@ -255,8 +333,23 @@ Behavior:
 
 ### `batch_qc_reports.py`
 
-Importable Python helper module for project-level QC reports. It does not define
-a command-line interface.
+Python helper module for project-level QC reports. 
+Direct command-line use:
+
+```bash
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report bet --n-slices 7
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --report registration
+python bin/helper_tools/batch_qc_reports.py -i /path/to/proc_data --custom-parameter t2-frac=0.1 --custom-parameter t2-bias-method=mico
+```
+
+`--report` accepts `all` (the default), `bet`, or `registration`. `--n-slices`
+sets the number of slices per orientation and defaults to `10`. Repeat
+`--custom-parameter NAME=VALUE` to record processing parameters in the custom
+parameters section of the generated HTML reports. Parameter names without a
+leading `--` are normalized automatically.
+
+Import use:
 
 Available functions:
 

@@ -16,7 +16,11 @@ import nibabel as nib
 import scipy.io as io
 import correlate_matrix
 
+from calendar import month_name
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+REPORT_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
 def parse_label_line(line):
@@ -81,7 +85,7 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
         PcorrR_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrR.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
         PcorrP_matrix_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrP.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
         PcorrZ_matirx_path = os.path.abspath(os.path.join(sPathData, os.pardir,  'Matrix_PcorrZ.' + os.path.basename(sPathData).split('_')[0])) + ".mat"
-    
+
     
     pcorr_paths = [PcorrR_matrix_path, PcorrP_matrix_path, PcorrZ_matirx_path]
 
@@ -127,10 +131,8 @@ def start_fsl_mean_ts(sPathData,sPathMask,labelNames,postTxt):
 
 
 def get_date():
-    now = datetime.now()
-    pvDate = now.strftime("%a %d %b %Y")
-    pvTime = now.strftime("%H:%M:%S")
-    return pvDate + ' ' + pvTime
+    now = datetime.now(REPORT_TIMEZONE)
+    return f"{now.day:02d} {month_name[now.month]} {now.year} {now:%H:%M:%S} {now.tzname()}"
 
 
 if __name__ == '__main__':
