@@ -6,6 +6,8 @@ import glob
 import csv
 import sys
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+from common.artifact_manifest import start_output_tracking
 
 def get_default_label_file(script_dir):
     repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
@@ -51,8 +53,6 @@ def load_label_lookup(label_file):
 
     return labels
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
-from common.artifact_manifest import start_output_tracking
 
 def getOutfile(atlas_type, img_file, suffix):
     imgName = os.path.basename(img_file)
