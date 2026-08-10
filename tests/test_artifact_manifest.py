@@ -95,9 +95,12 @@ class ArtifactManifestTests(unittest.TestCase):
             ]
             for sidecar in muted_sidecars:
                 sidecar.write_text("{}", encoding="utf-8")
+            stroke_mask = folder / "sub-01_ses-01_BetStroke_mask.nii.gz"
+            stroke_mask.write_text("stroke", encoding="utf-8")
 
             plans = build_reset_plan(project, "anat", "preprocessing")
             self.assertIn(unknown, plans[0]["unknown_files"])
+            self.assertIn(stroke_mask, plans[0]["unknown_files"])
             for sidecar in muted_sidecars:
                 self.assertIn(sidecar, plans[0]["unknown_files"])
             report = io.StringIO()
@@ -106,6 +109,14 @@ class ArtifactManifestTests(unittest.TestCase):
             report_text = report.getvalue()
             self.assertIn(
                 f"Not managed by the manifest; preserved: {unknown}",
+                report_text,
+            )
+            self.assertIn(
+                "[INFO] Stroke mask files are present in 1 selected folder.",
+                report_text,
+            )
+            self.assertIn(
+                f"Not managed by the manifest; preserved: {stroke_mask}",
                 report_text,
             )
             for sidecar in muted_sidecars:
@@ -129,6 +140,7 @@ class ArtifactManifestTests(unittest.TestCase):
             )
             for sidecar in muted_sidecars:
                 self.assertNotIn(str(sidecar), summary_text)
+            self.assertNotIn(str(stroke_mask), summary_text)
             with contextlib.redirect_stdout(io.StringIO()):
                 apply_reset_plan(plans)
 
@@ -138,6 +150,7 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertTrue(unknown.exists())
             for sidecar in muted_sidecars:
                 self.assertTrue(sidecar.exists())
+            self.assertTrue(stroke_mask.exists())
             self.assertTrue(registration_dir.exists())
             self.assertIsNotNone(load_manifest(folder, "anat"))
             self.assertTrue((folder / LOCK_FILENAME).exists())
