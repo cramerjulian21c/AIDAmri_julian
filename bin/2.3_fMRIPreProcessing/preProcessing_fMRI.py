@@ -34,7 +34,9 @@ def create_brkraw_backup(input_file):
     os.mkdir(brkraw_dir)
     dst_path = os.path.join(brkraw_dir, os.path.basename(input_file))
 
-    shutil.copyfile(input_file, dst_path)
+    # Keep the original NIfTI in brkraw and process a copy at the input path.
+    shutil.move(input_file, dst_path)
+    shutil.copyfile(dst_path, input_file)
 
     data = nib.load(input_file)
     # Preserve nibabel scaling (scl_slope/scl_inter). Using get_unscaled()
