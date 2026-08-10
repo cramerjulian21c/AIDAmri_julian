@@ -153,10 +153,15 @@ contain its readable, correctly named manifest. For example,
 `dwi`, `func`, or `t2map`. A missing or invalid manifest in the selected mode
 aborts the complete reset before anything is deleted.
 
+Do not run a reset concurrently with preprocessing,
+registration, processing, or `batchProc.py`.
+
 At the end of every dry-run or applied reset, warnings and unmanaged files are
 shown again in a consolidated summary grouped by subject, session, and mode.
 Modified files and unmanaged files are listed with their full paths so the user
-can inspect and handle them manually.
+can inspect and handle them manually. Standard BIDS sidecars matching
+`*_T2w.json`, `*_EPI.json`, or `*_dwi.json` remain visible in the detailed
+reset plan but are not repeated in the final summary.
 
 Always inspect a dry-run first:
 
