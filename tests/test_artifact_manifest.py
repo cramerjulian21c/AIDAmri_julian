@@ -128,6 +128,11 @@ class ArtifactManifestTests(unittest.TestCase):
             with contextlib.redirect_stdout(summary):
                 print_issue_summary(plans)
             summary_text = summary.getvalue()
+            self.assertIn(
+                "[INFO] Stroke mask files are present in 1 selected folder "
+                "and were preserved.",
+                summary_text,
+            )
             self.assertIn("sub-01 | ses-01 | anat", summary_text)
             self.assertIn(
                 f"[INFO] Not managed by the manifest; review manually: {unknown}",
