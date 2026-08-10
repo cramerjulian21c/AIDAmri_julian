@@ -144,7 +144,9 @@ the process exits. For example, `sub-01/ses-02/anat` uses
 launched directly instead of through `batchProc.py`.
 
 The reset helper deletes only files registered as newly created by stages after
-the requested target phase. Existing files that were modified are reported but
+the requested target phase. Standard BIDS sidecars matching `*_T2w.json`, `*_EPI.json`, `*_dwi.json`, 
+`*.bvec`, or `*.bval` and `*Stroke_mask.nii.gz` are not deleted.
+Existing files that were modified are reported but
 not deleted. Files without any manifest assignment are explicitly reported as
 not managed and are preserved. Tracked directories are removed only when
 empty. Before planning a reset, every existing folder of the selected mode must
@@ -153,15 +155,40 @@ contain its readable, correctly named manifest. For example,
 `dwi`, `func`, or `t2map`. A missing or invalid manifest in the selected mode
 aborts the complete reset before anything is deleted.
 
+Do not run a reset concurrently with preprocessing,
+registration, processing, or `batchProc.py`.
+
 At the end of every dry-run or applied reset, warnings and unmanaged files are
 shown again in a consolidated summary grouped by subject, session, and mode.
 Modified files and unmanaged files are listed with their full paths so the user
-can inspect and handle them manually.
+can inspect and handle them manually. Standard BIDS sidecars matching
+`*_T2w.json`, `*_EPI.json`, `*_dwi.json`, `*.bvec`, or `*.bval` remain visible
+in the detailed reset plan but are not repeated in the final summary.
+In normal mode, individual `*Stroke_mask.nii.gz` paths remain visible in their
+folder details but are omitted from the final summary. A single message near
+the start reports how many selected modality folders contain preserved stroke
+masks.
+
+Use `--delete-unmanaged` only after reviewing a dry-run. It permanently deletes
+files that are not referenced anywhere in the manifest. Files matching
+`MUTED_SUMMARY_SUFFIXES` and `*Stroke_mask.nii.gz` are always protected from
+this deletion. Other manually supplied masks, notes, and user data can still be
+deleted. Unmanaged directories are never removed recursively: their files are
+deleted individually and the directories are removed only when empty. A
+directory containing a protected file is preserved.
+
+```bash
+python Reset_proc_folder.py --input /path/to/project \
+  --mode anat \
+  --phase preprocessing \
+  --delete-unmanaged \
+  --dry-run
+```
 
 Always inspect a dry-run first:
 
 ```bash
-python Reset_proc_folder.py /path/to/project \
+python Reset_proc_folder.py --input /path/to/project \
   --mode anat \
   --phase preprocessing \
   --dry-run
@@ -170,14 +197,14 @@ python Reset_proc_folder.py /path/to/project \
 Apply the displayed plan interactively:
 
 ```bash
-python Reset_proc_folder.py /path/to/project \
+python Reset_proc_folder.py --input /path/to/project \
   --mode anat \
   --phase preprocessing
 ```
 
 Use `--yes` only for an already reviewed automated invocation. Projects that
 were processed before manifest tracking was introduced cannot be reconstructed
-retrospectively; their untracked files remain untouched.
+retrospectively. By default, their untracked files remain untouched.
 
 ## Reorientation
 
