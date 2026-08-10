@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.artifact_manifest import (
+    LOCK_FILENAME,
     MANIFEST_SUFFIX,
     MODES,
     load_manifest,
@@ -29,6 +30,7 @@ STAGE_ORDER = {
     "processing": 3,
 }
 NIFTI_SUFFIXES = (".nii", ".nii.gz")
+MUTED_SUMMARY_SUFFIXES = ("_T2w.json", "_EPI.json", "_dwi.json")
 
 
 class ResetError(RuntimeError):
@@ -371,6 +373,11 @@ def build_reset_plan(project_root, mode, phase):
                 "restore_files": restore_files,
                 "restore_errors": restore_errors,
                 "restored_destinations": restored_destinations,
+                "metadata_files": (
+                    [manifest_path(folder, mode), folder / LOCK_FILENAME]
+                    if phase == "base"
+                    else []
+                ),
                 "modified_files": sorted(
                     modified_files,
                     key=lambda item: (item[0], item[1]),
@@ -411,7 +418,14 @@ def print_reset_plan(plans, mode, phase):
                 print(f"  Delete file: {path}")
         for path in plan["directories"]:
             print(f"  Remove directory if empty: {path}")
-        if not plan["restore_files"] and not plan["files"] and not plan["directories"]:
+        for path in plan.get("metadata_files", []):
+            print(f"  Delete reset metadata: {path}")
+        if (
+            not plan["restore_files"]
+            and not plan["files"]
+            and not plan["directories"]
+            and not plan.get("metadata_files")
+        ):
             print("  No artifacts to delete.")
 
 
@@ -427,6 +441,15 @@ def _folder_identity(folder):
     return subject, session, folder.name
 
 
+def _summary_unknown_files(plan):
+    """Return unmanaged files that should be repeated in the final summary."""
+    return [
+        path
+        for path in plan.get("unknown_files", [])
+        if not path.name.endswith(MUTED_SUMMARY_SUFFIXES)
+    ]
+
+
 def print_issue_summary(plans):
     """Print all actionable warnings and information grouped by dataset."""
     affected_plans = [
@@ -436,14 +459,14 @@ def print_issue_summary(plans):
             plan.get("warnings")
             or plan.get("restore_errors")
             or plan.get("modified_files")
-            or plan.get("unknown_files")
+            or _summary_unknown_files(plan)
             or plan.get("runtime_warnings")
         )
     ]
 
     print("\nWarning and information summary")
     if not affected_plans:
-        print("No warnings or unmanaged files found.")
+        print("No warnings or reportable unmanaged files found.")
         return
 
     for plan in affected_plans:
@@ -458,7 +481,7 @@ def print_issue_summary(plans):
                 f"  [WARNING] Modified by {stage}; original content cannot be "
                 f"restored: {path}"
             )
-        for path in plan.get("unknown_files", []):
+        for path in _summary_unknown_files(plan):
             print(f"  [INFO] Not managed by the manifest; review manually: {path}")
         for warning in plan.get("runtime_warnings", []):
             print(f"  [WARNING] {warning}")
@@ -554,6 +577,27 @@ def _restore_base_files(plan):
     return True, restored_files
 
 
+def _delete_base_metadata(plan):
+    """Delete the manifest and its lock after a completed base reset."""
+    deleted_count = 0
+    succeeded = True
+
+    for path in plan.get("metadata_files", []):
+        try:
+            path.unlink()
+            deleted_count += 1
+            print(f"Deleted reset metadata: {path}")
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            succeeded = False
+            warning = f"Reset metadata could not be deleted: {path}: {exc}"
+            plan["runtime_warnings"].append(warning)
+            print(f"[WARNING] {warning}")
+
+    return succeeded, deleted_count
+
+
 def apply_reset_plan(plans):
     restore_errors = _base_restore_errors(plans)
     if restore_errors:
@@ -564,6 +608,8 @@ def apply_reset_plan(plans):
     deleted_files_count = 0
     deleted_dirs_count = 0
     restored_files_count = 0
+    deleted_metadata_count = 0
+    reset_succeeded = True
 
     # Restore all modality folders before deleting any backup or derived file.
     for plan in plans:
@@ -616,14 +662,19 @@ def apply_reset_plan(plans):
                 print(f"[WARNING] {warning}")
 
         _update_manifest_after_reset(plan, deleted_files, removed_directories)
+        if plan.get("phase") == "base":
+            metadata_succeeded, metadata_count = _delete_base_metadata(plan)
+            deleted_metadata_count += metadata_count
+            reset_succeeded = reset_succeeded and metadata_succeeded
 
     print("\nDone!")
     if any(plan.get("phase") == "base" for plan in plans):
         print(f"Restored original NIfTI files: {restored_files_count}")
+        print(f"Deleted reset metadata files: {deleted_metadata_count}")
     print(f"Deleted files: {deleted_files_count}")
     print(f"Removed empty directories: {deleted_dirs_count}")
     print_issue_summary(plans)
-    return True
+    return reset_succeeded
 
 
 def reset_folder(project_root, mode="anat", phase="base", dry_run=False):
@@ -740,7 +791,12 @@ def main(argv=None):
 
     has_actions = any(
         not plan["skip"]
-        and (plan.get("restore_files") or plan["files"] or plan["directories"])
+        and (
+            plan.get("restore_files")
+            or plan["files"]
+            or plan["directories"]
+            or plan.get("metadata_files")
+        )
         for plan in plans
     )
     if not has_actions:

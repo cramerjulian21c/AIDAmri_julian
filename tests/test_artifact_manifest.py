@@ -26,7 +26,12 @@ from pathlib import Path
 BIN_DIR = Path(__file__).resolve().parents[1] / "bin"
 sys.path.insert(0, str(BIN_DIR))
 
-from common.artifact_manifest import OutputTracker, load_manifest, manifest_filename
+from common.artifact_manifest import (
+    LOCK_FILENAME,
+    OutputTracker,
+    load_manifest,
+    manifest_filename,
+)
 from helper_tools.Reset_proc_folder import (
     apply_reset_plan,
     build_reset_plan,
@@ -81,16 +86,31 @@ class ArtifactManifestTests(unittest.TestCase):
 
             unknown = registration_dir / "notes.txt"
             unknown.write_text("user data", encoding="utf-8")
+            muted_sidecars = [
+                folder / "sub-01_ses-01_T2w.json",
+                folder / "sub-01_ses-01_EPI.json",
+                folder / "sub-01_ses-01_dwi.json",
+            ]
+            for sidecar in muted_sidecars:
+                sidecar.write_text("{}", encoding="utf-8")
 
             plans = build_reset_plan(project, "anat", "preprocessing")
             self.assertIn(unknown, plans[0]["unknown_files"])
+            for sidecar in muted_sidecars:
+                self.assertIn(sidecar, plans[0]["unknown_files"])
             report = io.StringIO()
             with contextlib.redirect_stdout(report):
                 print_reset_plan(plans, "anat", "preprocessing")
+            report_text = report.getvalue()
             self.assertIn(
                 f"Not managed by the manifest; preserved: {unknown}",
-                report.getvalue(),
+                report_text,
             )
+            for sidecar in muted_sidecars:
+                self.assertIn(
+                    f"Not managed by the manifest; preserved: {sidecar}",
+                    report_text,
+                )
             summary = io.StringIO()
             with contextlib.redirect_stdout(summary):
                 print_issue_summary(plans)
@@ -105,6 +125,8 @@ class ArtifactManifestTests(unittest.TestCase):
                 f"restored: {raw}",
                 summary_text,
             )
+            for sidecar in muted_sidecars:
+                self.assertNotIn(str(sidecar), summary_text)
             with contextlib.redirect_stdout(io.StringIO()):
                 apply_reset_plan(plans)
 
@@ -112,7 +134,11 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertTrue(preprocessing_output.exists())
             self.assertFalse(registration_output.exists())
             self.assertTrue(unknown.exists())
+            for sidecar in muted_sidecars:
+                self.assertTrue(sidecar.exists())
             self.assertTrue(registration_dir.exists())
+            self.assertIsNotNone(load_manifest(folder, "anat"))
+            self.assertTrue((folder / LOCK_FILENAME).exists())
 
     def test_folder_without_manifest_is_skipped(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -163,6 +189,14 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertEqual(plans[0]["restore_files"], [(backup, raw)])
             self.assertEqual(plans[0]["restore_errors"], [])
             self.assertEqual(plans[0]["modified_files"], [])
+            manifest_file = folder / manifest_filename(folder, "anat")
+            lock_file = folder / LOCK_FILENAME
+            self.assertEqual(
+                plans[0]["metadata_files"],
+                [manifest_file, lock_file],
+            )
+            self.assertTrue(manifest_file.exists())
+            self.assertTrue(lock_file.exists())
 
             with contextlib.redirect_stdout(io.StringIO()):
                 succeeded = apply_reset_plan(plans)
@@ -174,7 +208,16 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertFalse(preprocessing_output.exists())
             self.assertFalse(preprocessing_log.exists())
             self.assertFalse(registration_output.exists())
-            self.assertEqual(load_manifest(folder, "anat")["stages"], {})
+            self.assertIsNone(load_manifest(folder, "anat"))
+            self.assertFalse(manifest_file.exists())
+            self.assertFalse(lock_file.exists())
+
+            # The next processing run starts a fresh manifest and lock.
+            tracker = OutputTracker.start(folder, "anat", "preprocessing")
+            (folder / "new_output.nii.gz").write_text("new", encoding="utf-8")
+            tracker.finalize()
+            self.assertIsNotNone(load_manifest(folder, "anat"))
+            self.assertTrue(lock_file.exists())
 
     def test_base_reset_aborts_before_changes_when_backup_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -213,6 +256,8 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertIn("Base reset aborted", report.getvalue())
             self.assertEqual(raw.read_text(encoding="utf-8"), "preprocessed")
             self.assertTrue(output.exists())
+            self.assertIsNotNone(load_manifest(folder, "anat"))
+            self.assertTrue((folder / LOCK_FILENAME).exists())
 
     def test_t2map_outputs_can_be_tracked(self):
         with tempfile.TemporaryDirectory() as temp_dir:
