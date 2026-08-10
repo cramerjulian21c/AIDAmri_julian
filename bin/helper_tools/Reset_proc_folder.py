@@ -37,7 +37,8 @@ MUTED_SUMMARY_SUFFIXES = (
     ".bvec",
     ".bval",
 )
-PROTECTED_UNMANAGED_SUFFIXES = MUTED_SUMMARY_SUFFIXES + ("Stroke_mask.nii.gz",)
+STROKE_MASK_SUFFIX = "Stroke_mask.nii.gz"
+PROTECTED_UNMANAGED_SUFFIXES = MUTED_SUMMARY_SUFFIXES + (STROKE_MASK_SUFFIX,)
 
 
 class ResetError(RuntimeError):
@@ -241,6 +242,10 @@ def _known_manifest_directories(manifest):
 
 def _is_protected_unmanaged_file(path):
     return path.name.endswith(PROTECTED_UNMANAGED_SUFFIXES)
+
+
+def _is_stroke_mask(path):
+    return path.name.endswith(STROKE_MASK_SUFFIX)
 
 
 def build_reset_plan(project_root, mode, phase, delete_unmanaged=False):
@@ -463,6 +468,19 @@ def build_reset_plan(project_root, mode, phase, delete_unmanaged=False):
 def print_reset_plan(plans, mode, phase):
     print(f"\nReset plan for mode={mode}, target phase={phase}")
     print("Only later-stage artifacts registered in the manifest will be deleted.")
+    stroke_mask_folders = {
+        plan["folder"]
+        for plan in plans
+        if not plan.get("delete_unmanaged")
+        and any(_is_stroke_mask(path) for path in plan.get("unknown_files", []))
+    }
+    if stroke_mask_folders:
+        folder_word = "folder" if len(stroke_mask_folders) == 1 else "folders"
+        print(
+            f"\n[INFO] Stroke mask files are present in "
+            f"{len(stroke_mask_folders)} selected {folder_word}. "
+            "They are preserved and omitted from the per-folder file lists."
+        )
     if any(plan.get("delete_unmanaged") for plan in plans):
         print(
             "\n[DANGER] --delete-unmanaged is active. Files not known to the "
@@ -543,6 +561,7 @@ def _summary_unknown_files(plan):
         path
         for path in plan.get("unknown_files", [])
         if not path.name.endswith(MUTED_SUMMARY_SUFFIXES)
+        and not _is_stroke_mask(path)
     ]
 
 
