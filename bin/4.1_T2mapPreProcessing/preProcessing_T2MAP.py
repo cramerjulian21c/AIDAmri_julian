@@ -18,6 +18,7 @@ import shutil
 #makes sure to import bet.py
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
 from common.bet import applyBET, skip_bet_function
+from common.artifact_manifest import start_output_tracking
 
 FATAL_LIP_HEADER_EXIT_CODE = 86
 
@@ -30,7 +31,9 @@ def create_brkraw_backup(input_file):
     os.mkdir(brkraw_dir)
     dst_path = os.path.join(brkraw_dir, os.path.basename(input_file))
 
-    shutil.copyfile(input_file, dst_path)
+    # Keep the original NIfTI in brkraw and process a copy at the input path.
+    shutil.move(input_file, dst_path)
+    shutil.copyfile(dst_path, input_file)
 
     data = nib.load(input_file)
     # Preserve nibabel scaling (scl_slope/scl_inter). Using get_unscaled()
@@ -206,6 +209,7 @@ if __name__ == "__main__":
     horizontal_gradient = args.horizontal_gradient
     bias_method = args.bias_method
     output_path = os.path.dirname(input_file)
+    start_output_tracking(output_path, "t2map", "preprocessing")
 
     if args.bet == "bet":
         print(f"Frac: {frac} Radius: {radius} Gradient {horizontal_gradient}")
