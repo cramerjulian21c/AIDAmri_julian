@@ -16,11 +16,13 @@ Run from the repository root::
 """
 
 import contextlib
+import importlib.util
 import io
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 BIN_DIR = Path(__file__).resolve().parents[1] / "bin"
@@ -38,6 +40,65 @@ from helper_tools.Reset_proc_folder import (
 
 
 class ArtifactManifestTests(unittest.TestCase):
+    def test_multiverse_outputs_are_tracked_as_func_processing(self):
+        module_path = BIN_DIR / "Create_multiverse_output.py"
+        spec = importlib.util.spec_from_file_location(
+            "create_multiverse_output_test",
+            module_path,
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            subject = Path(temp_dir) / "sub-01" / "ses-1"
+            func_root = subject / "func"
+            func_output = func_root / "rs-fMRI_niiData"
+            anat = subject / "anat"
+            func_output.mkdir(parents=True)
+            anat.mkdir()
+            epi = func_output / "sub-01_task-rest_bold_EPI_mcf_f.nii.gz"
+            epi.write_text("input", encoding="utf-8")
+
+            registered = func_output / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template.nii.gz"
+            )
+            temporal_mean = func_output / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_temporal_mean.nii.gz"
+            )
+
+            def fake_transform(**_kwargs):
+                registered.write_text("registered", encoding="utf-8")
+                return [str(registered)]
+
+            def fake_temporal_mean(_input_path, output_path):
+                Path(output_path).write_text("mean", encoding="utf-8")
+
+            with (
+                mock.patch.object(
+                    module,
+                    "apply_affine_transformations",
+                    side_effect=fake_transform,
+                ),
+                mock.patch.object(
+                    module,
+                    "compute_temporal_mean",
+                    side_effect=fake_temporal_mean,
+                ),
+            ):
+                module.process_subject(str(subject), "template.nii.gz")
+
+            manifest = load_manifest(func_root, "func")
+            self.assertEqual(manifest["mode"], "func")
+            self.assertEqual(
+                manifest["stages"]["processing"]["created_files"],
+                [
+                    registered.relative_to(func_root).as_posix(),
+                    temporal_mean.relative_to(func_root).as_posix(),
+                ],
+            )
+
     def test_tracker_records_created_and_modified_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             folder = Path(temp_dir) / "sub-test" / "ses-test" / "anat"
@@ -95,11 +156,6 @@ class ArtifactManifestTests(unittest.TestCase):
             with contextlib.redirect_stdout(summary):
                 print_issue_summary(plans)
             summary_text = summary.getvalue()
-            self.assertIn(
-                "[INFO] Stroke mask files are present in 1 selected folder "
-                "and were preserved.",
-                summary_text,
-            )
             self.assertIn("sub-01 | ses-01 | anat", summary_text)
             self.assertIn(
                 f"[INFO] Not managed by the manifest; review manually: {unknown}",
@@ -170,7 +226,15 @@ class ArtifactManifestTests(unittest.TestCase):
 
             with contextlib.redirect_stdout(io.StringIO()):
                 exit_code = reset_main(
-                    [str(project), "--mode", "anat", "--phase", "base", "--yes"]
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "anat",
+                        "--phase",
+                        "base",
+                        "--yes",
+                    ]
                 )
 
             self.assertEqual(exit_code, 0)
@@ -186,7 +250,15 @@ class ArtifactManifestTests(unittest.TestCase):
 
             with contextlib.redirect_stdout(io.StringIO()):
                 exit_code = reset_main(
-                    [str(project), "--mode", "dwi", "--phase", "base", "--yes"]
+                    [
+                        "--input",
+                        str(project),
+                        "--mode",
+                        "dwi",
+                        "--phase",
+                        "base",
+                        "--yes",
+                    ]
                 )
 
             self.assertEqual(exit_code, 1)

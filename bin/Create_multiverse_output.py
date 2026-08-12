@@ -7,6 +7,8 @@ import nibabel as nib
 import numpy as np
 from tqdm import tqdm
 
+from common.artifact_manifest import start_output_tracking
+
 
 def find_first_file(search_pattern, description):
     """
@@ -222,29 +224,36 @@ def process_subject(subject_path, template_path):
         )
 
     epi_file = epi_files[0]
+    func_root = os.path.join(subject_path, "func")
+    tracker = start_output_tracking(func_root, "func", "processing")
 
-    registered_files = apply_affine_transformations(
-        files_list=[epi_file],
-        func_folder=func_folder,
-        anat_folder=anat_folder,
-        sigma_template_address=template_path,
-    )
+    try:
+        registered_files = apply_affine_transformations(
+            files_list=[epi_file],
+            func_folder=func_folder,
+            anat_folder=anat_folder,
+            sigma_template_address=template_path,
+        )
 
-    if not registered_files:
-        print(f"Registration failed for: {subject_path}")
-        return
+        if not registered_files:
+            print(f"Registration failed for: {subject_path}")
+            return
 
-    registered_file = registered_files[0]
+        registered_file = registered_files[0]
 
-    output_mean_path = registered_file.replace(
-        ".nii.gz",
-        "_temporal_mean.nii.gz",
-    )
+        output_mean_path = registered_file.replace(
+            ".nii.gz",
+            "_temporal_mean.nii.gz",
+        )
 
-    compute_temporal_mean(
-        registered_file,
-        output_mean_path,
-    )
+        compute_temporal_mean(
+            registered_file,
+            output_mean_path,
+        )
+    finally:
+        # Finalize per subject because one batch invocation processes several
+        # independent func folders.
+        tracker.finalize()
 
 
 def main_batch(root_folder, template_path):
