@@ -18,6 +18,7 @@ Run from the repository root::
 import contextlib
 import importlib.util
 import io
+import stat
 import sys
 import tempfile
 import unittest
@@ -114,6 +115,11 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertEqual(
                 manifest_filename(folder, "anat"),
                 ".sub-test_ses-test_anat_aidamri_manifest.json",
+            )
+            manifest_file = folder / manifest_filename(folder, "anat")
+            self.assertEqual(
+                stat.S_IMODE(manifest_file.stat().st_mode),
+                0o644,
             )
             stage = load_manifest(folder, "anat")["stages"]["preprocessing"]
             self.assertEqual(stage["created_files"], ["output.nii.gz"])
