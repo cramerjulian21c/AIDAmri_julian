@@ -343,7 +343,7 @@ def process_subject(subject_path, template_path):
 
     epi_file = epi_files[0]
     func_root = os.path.join(subject_path, "func")
-    tracker = start_output_tracking(func_root, "func", "processing")
+    tracker = start_output_tracking(func_root, "func", "multiverse_output")
 
     try:
         registered_files = apply_inverse_composite_transformation(
