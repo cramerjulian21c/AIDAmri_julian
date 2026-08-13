@@ -144,7 +144,11 @@ the process exits. For example, `sub-01/ses-02/anat` uses
 launched directly instead of through `batchProc.py`.
 
 The reset helper deletes only files registered as newly created by stages after
-the requested target phase. Standard BIDS sidecars matching `*_T2w.json`, `*_EPI.json`, `*_dwi.json`, 
+the requested target phase. The available phases are `base`, `preprocessing`,
+`registration`, `processing`, and `multiverse_output`, in that order. Resetting
+to `processing` therefore removes outputs created by
+`Create_multiverse_output.py` while preserving the regular processing results.
+Standard BIDS sidecars matching `*_T2w.json`, `*_EPI.json`, `*_dwi.json`,
 `*.bvec`, or `*.bval` and `*Stroke_mask.nii.gz` are not deleted.
 Existing files that were modified are reported but
 not deleted. Files without any manifest assignment are explicitly reported as
@@ -156,7 +160,7 @@ contain its readable, correctly named manifest. For example,
 aborts the complete reset before anything is deleted.
 
 Do not run a reset concurrently with preprocessing,
-registration, processing, or `batchProc.py`.
+registration, processing, `Create_multiverse_output.py`, or `batchProc.py`.
 
 At the end of every dry-run or applied reset, warnings and unmanaged files are
 shown again in a consolidated summary grouped by subject, session, and mode.
