@@ -10,14 +10,19 @@ from tqdm import tqdm
 from common.artifact_manifest import start_output_tracking
 
 
-def find_first_file(search_pattern, description):
+COMPOSITE_SUFFIX = "Matrixcomp_rsfMRI.nii.gz"
+
+
+def find_single_file(search_pattern, description):
     """
-    Find the first file matching a glob pattern.
+    Find exactly one file matching a glob pattern.
 
     Raises
     ------
     FileNotFoundError
         If no matching file is found.
+    RuntimeError
+        If more than one matching file is found.
     """
     matches = sorted(glob.glob(search_pattern, recursive=True))
 
@@ -27,24 +32,69 @@ def find_first_file(search_pattern, description):
             f"{search_pattern}"
         )
 
-    if len(matches) > 1:
-        print(
-            f"Warning: Found multiple files for {description}. "
-            f"Using:\n{matches[0]}"
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Expected exactly one {description}, found {len(matches)}:\n"
+            + "\n".join(matches)
         )
 
     return matches[0]
 
 
-def apply_affine_transformations(
+def find_registration_reference(composite_transform):
+    """Return the fMRI BET image used to create a composite transform."""
+    composite_name = os.path.basename(composite_transform)
+    if not composite_name.endswith(COMPOSITE_SUFFIX):
+        raise ValueError(
+            f"Unexpected composite transformation filename: {composite_name}"
+        )
+
+    reference_stem = composite_name[: -len(COMPOSITE_SUFFIX)]
+    reference_pattern = os.path.join(
+        os.path.dirname(composite_transform),
+        reference_stem + ".nii*",
+    )
+    return find_single_file(
+        reference_pattern,
+        "fMRI registration reference",
+    )
+
+
+def validate_spatial_geometry(input_file, registration_reference):
+    """Ensure a 4D fMRI file uses the grid of the registration reference."""
+    input_img = nib.load(input_file)
+    reference_img = nib.load(registration_reference)
+
+    if input_img.ndim != 4:
+        raise ValueError(
+            f"Expected a 4D fMRI file, but received {input_img.ndim} dimensions "
+            f"for {input_file}."
+        )
+
+    input_shape = tuple(input_img.shape[:3])
+    reference_shape = tuple(reference_img.shape[:3])
+    if input_shape != reference_shape:
+        raise ValueError(
+            "The fMRI file and registration reference have different spatial "
+            f"shapes: {input_shape} vs {reference_shape}.\n"
+            f"fMRI: {input_file}\nReference: {registration_reference}"
+        )
+
+    if not np.allclose(input_img.affine, reference_img.affine, rtol=0, atol=1e-4):
+        raise ValueError(
+            "The fMRI file and registration reference have different spatial "
+            f"affines.\nfMRI: {input_file}\nReference: {registration_reference}"
+        )
+
+
+def apply_inverse_composite_transformation(
     files_list,
     func_folder,
-    anat_folder,
     sigma_template_address,
 ):
     """
-    Transform fMRI files into SIGMA-template space using existing
-    functional and anatomical affine transformation matrices.
+    Transform fMRI files into SIGMA space by inverting the exact composite
+    transformation used to resample the SIGMA atlas into fMRI space.
 
     The input fMRI files are passed directly to reg_resample.
     No flipping or additional reorientation is performed.
@@ -53,53 +103,38 @@ def apply_affine_transformations(
 
     search_root_func = os.path.dirname(func_folder)
 
-    func_trafo = find_first_file(
+    composite_transform = find_single_file(
         os.path.join(
             search_root_func,
-            "**",
-            "*transMatrixAff.txt",
+            f"*{COMPOSITE_SUFFIX}",
         ),
-        "functional affine transformation",
+        "fMRI-to-SIGMA composite transformation",
     )
 
-    anat_trafo_inv = find_first_file(
-        os.path.join(
-            anat_folder,
-            "**",
-            "*MatrixInv.txt",
+    registration_reference = find_registration_reference(composite_transform)
+    inverse_composite = os.path.join(
+        func_folder,
+        os.path.basename(composite_transform).replace(
+            ".nii.gz",
+            "_inv.nii.gz",
         ),
-        "inverse anatomical transformation",
     )
 
-    func_trafo_inv = os.path.join(
-        func_folder,
-        "func_trafo_inv.txt",
-    )
+    # The composite transform was estimated on the 3D fMRI BET reference.
+    # It is valid for the 4D data only if their spatial grids are identical.
+    for input_file in files_list:
+        validate_spatial_geometry(input_file, registration_reference)
 
-    merged_inverted = os.path.join(
-        func_folder,
-        "merged_inverted.txt",
-    )
-
-    # Invert the functional affine transformation.
+    # Matrixcomp_rsfMRI maps fMRI reference coordinates into SIGMA floating
+    # coordinates. Invert the complete (affine + non-linear) transform and
+    # discretise the inverse deformation on the SIGMA target grid.
     subprocess.run(
         [
             "reg_transform",
-            "-invAff",
-            func_trafo,
-            func_trafo_inv,
-        ],
-        check=True,
-    )
-
-    # Combine the inverse anatomical and inverse functional transforms.
-    subprocess.run(
-        [
-            "reg_transform",
-            "-comp",
-            anat_trafo_inv,
-            func_trafo_inv,
-            merged_inverted,
+            "-invNrr",
+            composite_transform,
+            sigma_template_address,
+            inverse_composite,
         ],
         check=True,
     )
@@ -131,7 +166,7 @@ def apply_affine_transformations(
                 "-flo",
                 input_file,
                 "-trans",
-                merged_inverted,
+                inverse_composite,
                 "-res",
                 output_file,
                 "-inter",
@@ -192,11 +227,6 @@ def process_subject(subject_path, template_path):
         "rs-fMRI_niiData",
     )
 
-    anat_folder = os.path.join(
-        subject_path,
-        "anat",
-    )
-
     epi_pattern = os.path.join(
         func_folder,
         "*_task-rest_bold_EPI_mcf_st_f.nii.gz",
@@ -228,10 +258,9 @@ def process_subject(subject_path, template_path):
     tracker = start_output_tracking(func_root, "func", "processing")
 
     try:
-        registered_files = apply_affine_transformations(
+        registered_files = apply_inverse_composite_transformation(
             files_list=[epi_file],
             func_folder=func_folder,
-            anat_folder=anat_folder,
             sigma_template_address=template_path,
         )
 

@@ -79,7 +79,7 @@ class ArtifactManifestTests(unittest.TestCase):
             with (
                 mock.patch.object(
                     module,
-                    "apply_affine_transformations",
+                    "apply_inverse_composite_transformation",
                     side_effect=fake_transform,
                 ),
                 mock.patch.object(
