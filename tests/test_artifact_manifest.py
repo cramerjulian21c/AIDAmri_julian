@@ -41,7 +41,7 @@ from helper_tools.Reset_proc_folder import (
 
 
 class ArtifactManifestTests(unittest.TestCase):
-    def test_multiverse_outputs_are_tracked_as_func_processing(self):
+    def test_multiverse_outputs_are_tracked_in_separate_stage(self):
         module_path = BIN_DIR / "Create_multiverse_output.py"
         spec = importlib.util.spec_from_file_location(
             "create_multiverse_output_test",
@@ -93,12 +93,44 @@ class ArtifactManifestTests(unittest.TestCase):
             manifest = load_manifest(func_root, "func")
             self.assertEqual(manifest["mode"], "func")
             self.assertEqual(
-                manifest["stages"]["processing"]["created_files"],
+                manifest["stages"]["multiverse_output"]["created_files"],
                 [
                     registered.relative_to(func_root).as_posix(),
                     temporal_mean.relative_to(func_root).as_posix(),
                 ],
             )
+
+    def test_reset_to_processing_deletes_only_multiverse_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            folder = project / "sub-01" / "ses-01" / "func"
+            (folder / "brkraw").mkdir(parents=True)
+
+            processing = OutputTracker.start(folder, "func", "processing")
+            processing_output = folder / "processed.nii.gz"
+            processing_output.write_text("processed", encoding="utf-8")
+            processing.finalize()
+
+            multiverse = OutputTracker.start(
+                folder,
+                "func",
+                "multiverse_output",
+            )
+            multiverse_output = folder / "multiverse.nii.gz"
+            multiverse_output.write_text("multiverse", encoding="utf-8")
+            multiverse.finalize()
+
+            plans = build_reset_plan(project, "func", "processing")
+            self.assertEqual(plans[0]["selected_stages"], ["multiverse_output"])
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                apply_reset_plan(plans)
+
+            self.assertTrue(processing_output.exists())
+            self.assertFalse(multiverse_output.exists())
+            manifest = load_manifest(folder, "func")
+            self.assertIn("processing", manifest["stages"])
+            self.assertNotIn("multiverse_output", manifest["stages"])
 
     def test_tracker_records_created_and_modified_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:

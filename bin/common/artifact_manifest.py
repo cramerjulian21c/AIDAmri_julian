@@ -28,7 +28,12 @@ LOCK_FILENAME = ".aidamri_manifest.lock"
 MANIFEST_VERSION = 1
 MANIFEST_FILE_MODE = 0o644
 MODES = ("anat", "dwi", "func", "t2map")
-STAGES = ("preprocessing", "registration", "processing")
+STAGES = (
+    "preprocessing",
+    "registration",
+    "processing",
+    "multiverse_output",
+)
 MANIFEST_TIMEZONE = ZoneInfo("Europe/Berlin")
 
 
@@ -79,6 +84,10 @@ def _canonical_stage(stage: str) -> str:
         "registration": "registration",
         "process": "processing",
         "processing": "processing",
+        "multiverse": "multiverse_output",
+        "multiverse-output": "multiverse_output",
+        "multiverse output": "multiverse_output",
+        "multiverse_output": "multiverse_output",
     }
     try:
         return aliases[stage.strip().lower()]
