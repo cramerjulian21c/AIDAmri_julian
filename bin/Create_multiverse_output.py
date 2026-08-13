@@ -11,6 +11,8 @@ from common.artifact_manifest import start_output_tracking
 
 
 COMPOSITE_SUFFIX = "Matrixcomp_rsfMRI.nii.gz"
+MAX_AFFINE_DISPLACEMENT_VOXELS = 0.1
+SIGMA_ATLAS_FILENAME = "SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz"
 
 
 def find_single_file(search_pattern, description):
@@ -61,7 +63,14 @@ def find_registration_reference(composite_transform):
 
 
 def validate_spatial_geometry(input_file, registration_reference):
-    """Ensure a 4D fMRI file uses the grid of the registration reference."""
+    """Ensure a 4D fMRI file uses the grid of the registration reference.
+
+    ANTs can orthogonalise a NIfTI affine when qform and sform differ slightly,
+    while the FSL processing path retains the original sform. Such differences
+    do not imply a different voxel grid. Accept them when the images have the
+    same shape and orientation and the maximum corner displacement remains
+    below one tenth of the smallest spatial voxel size.
+    """
     input_img = nib.load(input_file)
     reference_img = nib.load(registration_reference)
 
@@ -80,10 +89,87 @@ def validate_spatial_geometry(input_file, registration_reference):
             f"fMRI: {input_file}\nReference: {registration_reference}"
         )
 
-    if not np.allclose(input_img.affine, reference_img.affine, rtol=0, atol=1e-4):
+    input_orientation = nib.aff2axcodes(input_img.affine)
+    reference_orientation = nib.aff2axcodes(reference_img.affine)
+    if input_orientation != reference_orientation:
         raise ValueError(
             "The fMRI file and registration reference have different spatial "
-            f"affines.\nfMRI: {input_file}\nReference: {registration_reference}"
+            f"orientations: {input_orientation} vs {reference_orientation}.\n"
+            f"fMRI: {input_file}\nReference: {registration_reference}"
+        )
+
+    spatial_corners = np.array(
+        [
+            [i, j, k, 1.0]
+            for i in (0, input_shape[0] - 1)
+            for j in (0, input_shape[1] - 1)
+            for k in (0, input_shape[2] - 1)
+        ]
+    ).T
+    world_difference = (
+        (input_img.affine - reference_img.affine) @ spatial_corners
+    )[:3]
+    max_displacement_mm = float(
+        np.max(np.linalg.norm(world_difference, axis=0))
+    )
+    min_voxel_size_mm = float(
+        min(
+            np.min(nib.affines.voxel_sizes(input_img.affine)),
+            np.min(nib.affines.voxel_sizes(reference_img.affine)),
+        )
+    )
+    max_allowed_mm = MAX_AFFINE_DISPLACEMENT_VOXELS * min_voxel_size_mm
+
+    if max_displacement_mm > max_allowed_mm:
+        raise ValueError(
+            "The fMRI file and registration reference have materially different "
+            f"spatial affines (maximum corner displacement "
+            f"{max_displacement_mm:.6f} mm; allowed {max_allowed_mm:.6f} mm).\n"
+            f"fMRI: {input_file}\nReference: {registration_reference}"
+        )
+
+    if not np.allclose(input_img.affine, reference_img.affine, rtol=0, atol=1e-4):
+        print(
+            "Warning: Accepting a minor fMRI/reference affine difference "
+            f"(maximum corner displacement {max_displacement_mm:.6f} mm, "
+            f"{max_displacement_mm / min_voxel_size_mm:.4f} voxel)."
+        )
+
+
+def validate_sigma_template_geometry(sigma_template_address):
+    """Ensure the export grid matches the SIGMA atlas used in registration."""
+    sigma_atlas_address = os.path.join(
+        os.path.dirname(sigma_template_address),
+        SIGMA_ATLAS_FILENAME,
+    )
+    if not os.path.exists(sigma_atlas_address):
+        print(
+            "Warning: Could not validate the SIGMA template geometry because "
+            f"the matching atlas was not found: {sigma_atlas_address}"
+        )
+        return
+
+    template_img = nib.load(sigma_template_address)
+    atlas_img = nib.load(sigma_atlas_address)
+    template_shape = tuple(template_img.shape[:3])
+    atlas_shape = tuple(atlas_img.shape[:3])
+
+    if template_shape != atlas_shape or not np.allclose(
+        template_img.affine,
+        atlas_img.affine,
+        rtol=0,
+        atol=1e-4,
+    ):
+        expected_template = os.path.join(
+            os.path.dirname(sigma_template_address),
+            "SIGMA_InVivo_Brain_Template_Masked.nii.gz",
+        )
+        raise ValueError(
+            "The SIGMA template does not use the geometry of the SIGMA atlas "
+            "used for registration. Use the matching compressed template:\n"
+            f"{expected_template}\n"
+            f"Template: {sigma_template_address}\n"
+            f"Atlas: {sigma_atlas_address}"
         )
 
 
@@ -102,6 +188,8 @@ def apply_inverse_composite_transformation(
     transformed_files = []
 
     search_root_func = os.path.dirname(func_folder)
+
+    validate_sigma_template_geometry(sigma_template_address)
 
     composite_transform = find_single_file(
         os.path.join(

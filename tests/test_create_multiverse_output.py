@@ -1,6 +1,7 @@
 """Tests for transforming processed 4D fMRI data into SIGMA space."""
 
 import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ import numpy as np
 
 BIN_DIR = Path(__file__).resolve().parents[1] / "bin"
 MODULE_PATH = BIN_DIR / "Create_multiverse_output.py"
+sys.path.insert(0, str(BIN_DIR))
 
 
 def load_module():
@@ -44,10 +46,12 @@ class MultiverseTransformTests(unittest.TestCase):
             reference = func_root / f"{prefix}.nii.gz"
             composite = func_root / f"{prefix}Matrixcomp_rsfMRI.nii.gz"
             template = Path(temp_dir) / "SIGMA_template.nii.gz"
+            atlas = Path(temp_dir) / self.module.SIGMA_ATLAS_FILENAME
             input_file = func_folder / "sub-01_task-rest_bold_EPI_mcf_f.nii.gz"
 
             save_nifti(reference, (4, 5, 6))
             save_nifti(template, (7, 8, 9))
+            save_nifti(atlas, (7, 8, 9))
             save_nifti(input_file, (4, 5, 6, 3))
             composite.write_bytes(b"composite")
 
@@ -124,6 +128,76 @@ class MultiverseTransformTests(unittest.TestCase):
                 )
 
             run.assert_not_called()
+
+    def test_accepts_minor_ants_affine_normalisation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "fmri.nii.gz"
+            reference = Path(temp_dir) / "reference.nii.gz"
+            affine = np.diag([-0.4, -0.4, -1.1, 1.0])
+            reference_affine = affine.copy()
+            reference_affine[1, 2] = 0.0006
+
+            save_nifti(input_file, (64, 64, 18, 3), affine)
+            save_nifti(reference, (64, 64, 18), reference_affine)
+
+            with mock.patch("builtins.print") as print_mock:
+                self.module.validate_spatial_geometry(
+                    str(input_file),
+                    str(reference),
+                )
+
+            self.assertIn(
+                "Accepting a minor fMRI/reference affine difference",
+                print_mock.call_args.args[0],
+            )
+
+    def test_rejects_material_affine_difference(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "fmri.nii.gz"
+            reference = Path(temp_dir) / "reference.nii.gz"
+            affine = np.diag([-0.4, -0.4, -1.1, 1.0])
+            shifted_affine = affine.copy()
+            shifted_affine[0, 3] = 0.2
+
+            save_nifti(input_file, (64, 64, 18, 3), affine)
+            save_nifti(reference, (64, 64, 18), shifted_affine)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "materially different spatial affines",
+            ):
+                self.module.validate_spatial_geometry(
+                    str(input_file),
+                    str(reference),
+                )
+
+    def test_rejects_sigma_template_with_wrong_atlas_affine(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template = Path(temp_dir) / "SIGMA_InVivo_Brain_Template_Masked.nii"
+            atlas = Path(temp_dir) / self.module.SIGMA_ATLAS_FILENAME
+            template_affine = np.eye(4)
+            atlas_affine = np.eye(4)
+            atlas_affine[1, 3] = 11.045
+
+            save_nifti(template, (128, 128, 218), template_affine)
+            save_nifti(atlas, (128, 128, 218), atlas_affine)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "does not use the geometry of the SIGMA atlas",
+            ):
+                self.module.validate_sigma_template_geometry(str(template))
+
+    def test_accepts_sigma_template_matching_atlas_geometry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            template = Path(temp_dir) / "SIGMA_InVivo_Brain_Template_Masked.nii.gz"
+            atlas = Path(temp_dir) / self.module.SIGMA_ATLAS_FILENAME
+            affine = np.diag([-0.15, -0.15, -0.15, 1.0])
+
+            save_nifti(template, (128, 128, 218), affine)
+            save_nifti(atlas, (128, 128, 218), affine)
+
+            self.module.validate_sigma_template_geometry(str(template))
 
     def test_rejects_ambiguous_composite_transforms(self):
         with tempfile.TemporaryDirectory() as temp_dir:
