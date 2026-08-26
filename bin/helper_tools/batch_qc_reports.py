@@ -158,6 +158,7 @@ def _plot_registration_overlay(
     atlas_labels=None,
     report_title="Registration Report",
     filename_suffix="registration_report",
+    png_source_path=None,
 ):
     bet_data, shape, zooms = _load_3d(bet_path)
     anno_data, anno_shape, _ = _load_3d(anno_path)
@@ -206,7 +207,12 @@ def _plot_registration_overlay(
 
     fig.suptitle(f"{report_title}: {Path(bet_path).name} + {Path(anno_path).name}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    png_path = Path(out_dir) / _safe_png_name(anno_path, project_dir, filename_suffix)
+    png_source_path = png_source_path or anno_path
+    png_path = Path(out_dir) / _safe_png_name(
+        png_source_path,
+        project_dir,
+        filename_suffix,
+    )
     fig.savefig(png_path, dpi=120)
     plt.close(fig)
     return png_path, shape, anno_shape, zooms
