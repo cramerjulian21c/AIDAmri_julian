@@ -15,6 +15,7 @@ environment so that relative paths to `lib/` resources resolve as expected.
 | `ReorientBatch.py` | Reorient NIfTI files to a target orientation while mirroring the input folder tree. |
 | `adjustbvecRep.py` | Repeat DWI `.bval` and `.bvec` sidecars to match the number of image volumes. |
 | `batch_qc_reports.py` | Python helper module for project-level BET, registration, and corpus callosum HTML QC reports. |
+| `batch_multiverse_qc_reports.py` | Registration and corpus callosum QC reports for corrected Multiverse SIGMA-space outputs. |
 | `crop_T2.py` | Crop T2-weighted images in x/y using FSL through Nipype and write quick-look PNGs. |
 | `fieldmap_json_edit.py` | Populate BIDS fieldmap JSON `IntendedFor` entries for DWI and functional files. |
 | `getAtlasRegionSize_BIDS.py` | Compute per-annotation atlas region volumes in BIDS-style folder trees. |
@@ -410,6 +411,30 @@ Corpus callosum report behavior:
 - Uses the same BET/`*_AnnoSplit_parental.nii.gz` pairs as the registration report.
 - Filters the annotation overlay to atlas labels `891` and `892` only.
 - Writes PNGs and `cc_report.html` under `<project_dir>/Report/CC/`.
+
+### `batch_multiverse_qc_reports.py`
+
+Creates registration and corpus-callosum QC reports for the corrected
+Multiverse outputs:
+
+```bash
+python bin/helper_tools/batch_multiverse_qc_reports.py -i /path/to/proc_data
+python bin/helper_tools/batch_multiverse_qc_reports.py -i /path/to/proc_data --report registration
+python bin/helper_tools/batch_multiverse_qc_reports.py -i /path/to/proc_data --report cc --n-slices 7
+python bin/helper_tools/batch_multiverse_qc_reports.py -i /path/to/proc_data --atlas /path/to/SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz
+```
+
+Behavior:
+
+- Searches for
+  `sub-*/ses-*/func/rs-fMRI_niiData/Multiverse_Output/*SIGMA_template_temporal_mean_corrected.nii.gz`.
+- Uses `lib/sigma/SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz` by default;
+  `--atlas` can override it.
+- The registration report overlays the complete SIGMA atlas.
+- The CC report overlays only corpus-callosum labels `891` and `892`.
+- Rejects overlays with mismatched dimensions or spatial affines.
+- Writes reports below `<project_dir>/Report/Multiverse/Registration/` and
+  `<project_dir>/Report/Multiverse/CC/`.
 
 ## T2 Cropping
 
