@@ -64,9 +64,13 @@ To transform the EPI data into SIGMA space, the complete
 `*Matrixcomp_rsfMRI.nii.gz` transformation was inverted with NiftyReg
 `reg_transform -invNrr`. Before resampling, the motion-corrected 4D EPI was
 masked in native fMRI space with the BET mask of the registration reference.
-The masked 4D EPI was then resampled into the SIGMA template grid with cubic
-interpolation. A temporal-mean image was calculated from the registered 4D
-data.
+The masked 4D EPI was provisionally resampled into the SIGMA template grid and
+temporally averaged. A residual rigid alignment between this 3D mean and the
+SIGMA template was estimated with `reg_aladin -rigOnly`. This affine correction
+was composed with the original inverse transformation. The resulting corrected
+transformation was then applied directly to the native masked 4D EPI with cubic
+interpolation, avoiding two resampling operations in the final data path. A
+final temporal-mean image was calculated from the corrected registered data.
 
 The exported EPI is motion and slice-time corrected and has
 the first five volumes removed. It is exported before physiological
@@ -101,9 +105,14 @@ flowchart TD
 
     FREF --> BETMASK["Apply fMRI BET mask to 4D EPI"]
     EPI --> BETMASK
-    BETMASK --> EXPORT["Invert transformation + resample masked EPI"]
-    COMP --> EXPORT
-    EXPORT --> SIGMA["4D EPI + temporal mean in SIGMA space"]
+    BETMASK --> PROVISIONAL["Provisional 4D EPI in SIGMA space + temporal mean"]
+    COMP --> PROVISIONAL
+    PROVISIONAL --> RIGID["Residual rigid registration to SIGMA"]
+    RIGID --> COMPCORR["Compose corrected transformation"]
+    COMP --> COMPCORR
+    BETMASK --> EXPORT["Resample native masked 4D EPI once"]
+    COMPCORR --> EXPORT
+    EXPORT --> SIGMA["Corrected 4D EPI + final temporal mean in SIGMA space"]
 ```
 
 ## Tools used by AIDAmri

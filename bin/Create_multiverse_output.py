@@ -13,6 +13,17 @@ from common.artifact_manifest import start_output_tracking
 COMPOSITE_SUFFIX = "Matrixcomp_rsfMRI.nii.gz"
 MAX_AFFINE_DISPLACEMENT_VOXELS = 0.1
 SIGMA_ATLAS_FILENAME = "SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz"
+MULTIVERSE_OUTPUT_FOLDER = "Multiverse_Output"
+
+
+def nifti_stem(path):
+    """Return a NIfTI filename without its .nii or .nii.gz suffix."""
+    filename = os.path.basename(path)
+    if filename.endswith(".nii.gz"):
+        return filename[:-7]
+    if filename.endswith(".nii"):
+        return filename[:-4]
+    raise ValueError(f"Expected a NIfTI file: {path}")
 
 
 def find_single_file(search_pattern, description):
@@ -157,7 +168,7 @@ def validate_spatial_geometry(input_file, registration_reference):
         )
 
 
-def apply_bet_mask(input_file, mask_file):
+def apply_bet_mask(input_file, mask_file, output_directory):
     """Apply one 3D BET mask to every volume of a 4D fMRI image."""
     input_img = nib.load(input_file)
     mask_img = nib.load(mask_file)
@@ -181,12 +192,10 @@ def apply_bet_mask(input_file, mask_file):
         dtype=np.float32,
     )
 
-    if input_file.endswith(".nii.gz"):
-        output_file = input_file[:-7] + "_BET.nii.gz"
-    elif input_file.endswith(".nii"):
-        output_file = input_file[:-4] + "_BET.nii"
-    else:
-        raise ValueError(f"The fMRI input must be a NIfTI file: {input_file}")
+    output_file = os.path.join(
+        output_directory,
+        nifti_stem(input_file) + "_BET.nii.gz",
+    )
 
     output_header = input_img.header.copy()
     output_header.set_data_dtype(np.float32)
@@ -250,16 +259,19 @@ def apply_inverse_composite_transformation(
     sigma_template_address,
 ):
     """
-    Transform fMRI files into SIGMA space by inverting the exact composite
-    transformation used to resample the SIGMA atlas into fMRI space.
+    Transform fMRI files into SIGMA space and refine the alignment rigidly.
 
-    Each input fMRI file is first masked with the BET mask belonging to the
-    registration reference. No flipping or additional reorientation is
-    performed.
+    Each input is BET-masked, provisionally transformed with the inverse
+    composite transformation and temporally averaged. A rigid residual
+    correction is estimated between that mean and the SIGMA template, composed
+    with the original inverse transform, and applied once to the native masked
+    4D data to produce the final corrected result.
     """
     transformed_files = []
 
     search_root_func = os.path.dirname(func_folder)
+    output_directory = os.path.join(func_folder, MULTIVERSE_OUTPUT_FOLDER)
+    os.makedirs(output_directory, exist_ok=True)
 
     validate_sigma_template_geometry(sigma_template_address)
 
@@ -274,7 +286,7 @@ def apply_inverse_composite_transformation(
     registration_reference = find_registration_reference(composite_transform)
     bet_mask_file = find_bet_mask(registration_reference)
     inverse_composite = os.path.join(
-        func_folder,
+        output_directory,
         os.path.basename(composite_transform).replace(
             ".nii.gz",
             "_inv.nii.gz",
@@ -286,7 +298,9 @@ def apply_inverse_composite_transformation(
     masked_files = []
     for input_file in files_list:
         validate_spatial_geometry(input_file, registration_reference)
-        masked_files.append(apply_bet_mask(input_file, bet_mask_file))
+        masked_files.append(
+            apply_bet_mask(input_file, bet_mask_file, output_directory)
+        )
 
     # Matrixcomp_rsfMRI maps fMRI reference coordinates into SIGMA floating
     # coordinates. Invert the complete (affine + non-linear) transform and
@@ -308,20 +322,39 @@ def apply_inverse_composite_transformation(
         desc="Applying transformations",
         unit="file",
     ):
-        file_dir = os.path.dirname(input_file)
-        base_filename = os.path.basename(input_file)
-
-        output_filename = base_filename.replace(
-            ".nii.gz",
-            "_registered_on_SIGMA_template.nii.gz",
+        input_stem = nifti_stem(input_file)
+        provisional_file = os.path.join(
+            output_directory,
+            input_stem + "_registered_on_SIGMA_template.nii.gz",
+        )
+        provisional_mean = os.path.join(
+            output_directory,
+            input_stem
+            + "_registered_on_SIGMA_template_temporal_mean.nii.gz",
+        )
+        second_registration = os.path.join(
+            output_directory,
+            input_stem + "_registered_on_SIGMA_template_2nd_reg.nii.gz",
+        )
+        second_affine = os.path.join(
+            output_directory,
+            input_stem + "_registered_on_SIGMA_template_2nd_aff.txt",
+        )
+        corrected_transform = os.path.join(
+            output_directory,
+            input_stem + "_corrected_trans.nii.gz",
+        )
+        corrected_file = os.path.join(
+            output_directory,
+            input_stem + "_registered_on_SIGMA_template_corrected.nii.gz",
+        )
+        corrected_mean = os.path.join(
+            output_directory,
+            input_stem
+            + "_registered_on_SIGMA_template_temporal_mean_corrected.nii.gz",
         )
 
-        output_file = os.path.join(
-            file_dir,
-            output_filename,
-        )
-
-        # Transform the brain-masked 4D fMRI data into SIGMA space.
+        # First transform: create a provisional 4D image in SIGMA space.
         subprocess.run(
             [
                 "reg_resample",
@@ -332,14 +365,69 @@ def apply_inverse_composite_transformation(
                 "-trans",
                 inverse_composite,
                 "-res",
-                output_file,
+                provisional_file,
                 "-inter",
                 "3",
             ],
             check=True,
         )
 
-        transformed_files.append(output_file)
+        # Estimate one residual rigid correction from the provisional temporal
+        # mean rather than from an individual fMRI volume.
+        compute_temporal_mean(provisional_file, provisional_mean)
+        subprocess.run(
+            [
+                "reg_aladin",
+                "-ref",
+                sigma_template_address,
+                "-flo",
+                provisional_mean,
+                "-rigOnly",
+                "-res",
+                second_registration,
+                "-aff",
+                second_affine,
+            ],
+            check=True,
+        )
+
+        # NiftyReg composes as Trans3(x) = Trans2(Trans1(x)). Apply the rigid
+        # residual correction first and the original inverse deformation next,
+        # yielding a SIGMA-reference to native-fMRI floating transformation.
+        subprocess.run(
+            [
+                "reg_transform",
+                "-ref",
+                sigma_template_address,
+                "-comp",
+                second_affine,
+                inverse_composite,
+                corrected_transform,
+            ],
+            check=True,
+        )
+
+        # Generate the final 4D result directly from the native BET-masked data
+        # so that it undergoes only one spatial interpolation in the final path.
+        subprocess.run(
+            [
+                "reg_resample",
+                "-ref",
+                sigma_template_address,
+                "-flo",
+                masked_file,
+                "-trans",
+                corrected_transform,
+                "-res",
+                corrected_file,
+                "-inter",
+                "3",
+            ],
+            check=True,
+        )
+
+        compute_temporal_mean(corrected_file, corrected_mean)
+        transformed_files.append(corrected_file)
 
     return transformed_files
 
@@ -432,17 +520,6 @@ def process_subject(subject_path, template_path):
             print(f"Registration failed for: {subject_path}")
             return
 
-        registered_file = registered_files[0]
-
-        output_mean_path = registered_file.replace(
-            ".nii.gz",
-            "_temporal_mean.nii.gz",
-        )
-
-        compute_temporal_mean(
-            registered_file,
-            output_mean_path,
-        )
     finally:
         # Finalize per subject because one batch invocation processes several
         # independent func folders.
@@ -492,8 +569,8 @@ def main_batch(root_folder, template_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=(
-            "Register 4D fMRI data to a SIGMA template using existing "
-            "NiftyReg transformations and compute a temporal mean image."
+            "Register BET-masked 4D fMRI data to a SIGMA template, refine the "
+            "alignment rigidly and compute temporal mean images."
         )
     )
 

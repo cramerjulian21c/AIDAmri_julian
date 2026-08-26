@@ -36,7 +36,7 @@ class MultiverseTransformTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
 
-    def test_inverts_and_applies_complete_composite_transform(self):
+    def test_masks_refines_and_applies_corrected_composite_transform(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             func_root = Path(temp_dir) / "func"
             func_folder = func_root / "rs-fMRI_niiData"
@@ -60,24 +60,78 @@ class MultiverseTransformTests(unittest.TestCase):
             nib.save(nib.Nifti1Image(input_data, np.eye(4)), input_file)
             composite.write_bytes(b"composite")
 
-            with mock.patch.object(self.module.subprocess, "run") as run:
+            def fake_niftyreg_run(command, check):
+                self.assertTrue(check)
+                output_path = Path(command[-1])
+                if command[0] == "reg_transform":
+                    output_path.write_bytes(b"transform")
+                elif command[0] == "reg_resample":
+                    floating = nib.load(command[command.index("-flo") + 1])
+                    reference_img = nib.load(command[command.index("-ref") + 1])
+                    output_path = Path(command[command.index("-res") + 1])
+                    output_shape = reference_img.shape[:3] + floating.shape[3:]
+                    save_nifti(output_path, output_shape, reference_img.affine)
+                elif command[0] == "reg_aladin":
+                    result_path = Path(command[command.index("-res") + 1])
+                    affine_path = Path(command[command.index("-aff") + 1])
+                    reference_img = nib.load(command[command.index("-ref") + 1])
+                    save_nifti(result_path, reference_img.shape, reference_img.affine)
+                    affine_path.write_text("identity", encoding="utf-8")
+                return mock.DEFAULT
+
+            with mock.patch.object(
+                self.module.subprocess,
+                "run",
+                side_effect=fake_niftyreg_run,
+            ) as run:
                 outputs = self.module.apply_inverse_composite_transformation(
                     files_list=[str(input_file)],
                     func_folder=str(func_folder),
                     sigma_template_address=str(template),
                 )
 
-            inverse = func_folder / f"{prefix}Matrixcomp_rsfMRI_inv.nii.gz"
-            output = func_folder / (
+            output_dir = func_folder / self.module.MULTIVERSE_OUTPUT_FOLDER
+            inverse = output_dir / f"{prefix}Matrixcomp_rsfMRI_inv.nii.gz"
+            provisional = output_dir / (
                 "sub-01_task-rest_bold_EPI_mcf_f_"
                 "registered_on_SIGMA_template.nii.gz"
             )
-            masked_input = func_folder / "sub-01_task-rest_bold_EPI_mcf_f_BET.nii.gz"
-            self.assertEqual(outputs, [str(output)])
+            provisional_mean = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_temporal_mean.nii.gz"
+            )
+            second_registration = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_2nd_reg.nii.gz"
+            )
+            second_affine = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_2nd_aff.txt"
+            )
+            corrected_transform = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_corrected_trans.nii.gz"
+            )
+            corrected = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_corrected.nii.gz"
+            )
+            corrected_mean = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_temporal_mean_corrected.nii.gz"
+            )
+            masked_input = output_dir / "sub-01_task-rest_bold_EPI_mcf_f_BET.nii.gz"
+            self.assertEqual(outputs, [str(corrected)])
             masked_data = nib.load(masked_input).get_fdata()
             self.assertEqual(masked_data.shape, (4, 5, 6, 3))
             self.assertTrue(np.all(masked_data[mask_data == 0] == 0))
             self.assertTrue(np.all(masked_data[mask_data > 0] == 1))
+            self.assertEqual(nib.load(provisional).shape, (7, 8, 9, 3))
+            self.assertEqual(nib.load(provisional_mean).shape, (7, 8, 9))
+            self.assertEqual(nib.load(second_registration).shape, (7, 8, 9))
+            self.assertTrue(second_affine.is_file())
+            self.assertTrue(corrected_transform.is_file())
+            self.assertEqual(nib.load(corrected).shape, (7, 8, 9, 3))
+            self.assertEqual(nib.load(corrected_mean).shape, (7, 8, 9))
             self.assertEqual(
                 run.call_args_list,
                 [
@@ -101,7 +155,50 @@ class MultiverseTransformTests(unittest.TestCase):
                             "-trans",
                             str(inverse),
                             "-res",
-                            str(output),
+                            str(provisional),
+                            "-inter",
+                            "3",
+                        ],
+                        check=True,
+                    ),
+                    mock.call(
+                        [
+                            "reg_aladin",
+                            "-ref",
+                            str(template),
+                            "-flo",
+                            str(provisional_mean),
+                            "-rigOnly",
+                            "-res",
+                            str(second_registration),
+                            "-aff",
+                            str(second_affine),
+                        ],
+                        check=True,
+                    ),
+                    mock.call(
+                        [
+                            "reg_transform",
+                            "-ref",
+                            str(template),
+                            "-comp",
+                            str(second_affine),
+                            str(inverse),
+                            str(corrected_transform),
+                        ],
+                        check=True,
+                    ),
+                    mock.call(
+                        [
+                            "reg_resample",
+                            "-ref",
+                            str(template),
+                            "-flo",
+                            str(masked_input),
+                            "-trans",
+                            str(corrected_transform),
+                            "-res",
+                            str(corrected),
                             "-inter",
                             "3",
                         ],
