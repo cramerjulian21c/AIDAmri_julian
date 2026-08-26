@@ -44,15 +44,20 @@ class MultiverseTransformTests(unittest.TestCase):
 
             prefix = "sub-01_task-rest_bold_EPIMPSmoothBet"
             reference = func_root / f"{prefix}.nii.gz"
+            bet_mask = func_root / f"{prefix}_mask.nii.gz"
             composite = func_root / f"{prefix}Matrixcomp_rsfMRI.nii.gz"
             template = Path(temp_dir) / "SIGMA_template.nii.gz"
             atlas = Path(temp_dir) / self.module.SIGMA_ATLAS_FILENAME
             input_file = func_folder / "sub-01_task-rest_bold_EPI_mcf_f.nii.gz"
 
             save_nifti(reference, (4, 5, 6))
+            mask_data = np.zeros((4, 5, 6), dtype=np.uint8)
+            mask_data[1:3, 1:4, 1:5] = 1
+            nib.save(nib.Nifti1Image(mask_data, np.eye(4)), bet_mask)
             save_nifti(template, (7, 8, 9))
             save_nifti(atlas, (7, 8, 9))
-            save_nifti(input_file, (4, 5, 6, 3))
+            input_data = np.ones((4, 5, 6, 3), dtype=np.float32)
+            nib.save(nib.Nifti1Image(input_data, np.eye(4)), input_file)
             composite.write_bytes(b"composite")
 
             with mock.patch.object(self.module.subprocess, "run") as run:
@@ -67,7 +72,12 @@ class MultiverseTransformTests(unittest.TestCase):
                 "sub-01_task-rest_bold_EPI_mcf_f_"
                 "registered_on_SIGMA_template.nii.gz"
             )
+            masked_input = func_folder / "sub-01_task-rest_bold_EPI_mcf_f_BET.nii.gz"
             self.assertEqual(outputs, [str(output)])
+            masked_data = nib.load(masked_input).get_fdata()
+            self.assertEqual(masked_data.shape, (4, 5, 6, 3))
+            self.assertTrue(np.all(masked_data[mask_data == 0] == 0))
+            self.assertTrue(np.all(masked_data[mask_data > 0] == 1))
             self.assertEqual(
                 run.call_args_list,
                 [
@@ -87,7 +97,7 @@ class MultiverseTransformTests(unittest.TestCase):
                             "-ref",
                             str(template),
                             "-flo",
-                            str(input_file),
+                            str(masked_input),
                             "-trans",
                             str(inverse),
                             "-res",
@@ -108,11 +118,13 @@ class MultiverseTransformTests(unittest.TestCase):
 
             prefix = "sub-01_task-rest_bold_EPIMPSmoothBet"
             reference = func_root / f"{prefix}.nii.gz"
+            bet_mask = func_root / f"{prefix}_mask.nii.gz"
             composite = func_root / f"{prefix}Matrixcomp_rsfMRI.nii.gz"
             template = Path(temp_dir) / "SIGMA_template.nii.gz"
             input_file = func_folder / "sub-01_task-rest_bold_EPI_mcf_f.nii.gz"
 
             save_nifti(reference, (4, 5, 6))
+            save_nifti(bet_mask, (4, 5, 6))
             save_nifti(template, (7, 8, 9))
             save_nifti(input_file, (4, 5, 7, 3))
             composite.write_bytes(b"composite")
@@ -120,6 +132,35 @@ class MultiverseTransformTests(unittest.TestCase):
             with (
                 mock.patch.object(self.module.subprocess, "run") as run,
                 self.assertRaisesRegex(ValueError, "different spatial shapes"),
+            ):
+                self.module.apply_inverse_composite_transformation(
+                    files_list=[str(input_file)],
+                    func_folder=str(func_folder),
+                    sigma_template_address=str(template),
+                )
+
+            run.assert_not_called()
+
+    def test_requires_companion_bet_mask(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            func_root = Path(temp_dir) / "func"
+            func_folder = func_root / "rs-fMRI_niiData"
+            func_folder.mkdir(parents=True)
+
+            prefix = "sub-01_task-rest_bold_EPIMPSmoothBet"
+            reference = func_root / f"{prefix}.nii.gz"
+            composite = func_root / f"{prefix}Matrixcomp_rsfMRI.nii.gz"
+            template = Path(temp_dir) / "SIGMA_template.nii.gz"
+            input_file = func_folder / "sub-01_task-rest_bold_EPI_mcf_f.nii.gz"
+
+            save_nifti(reference, (4, 5, 6))
+            save_nifti(template, (7, 8, 9))
+            save_nifti(input_file, (4, 5, 6, 3))
+            composite.write_bytes(b"composite")
+
+            with (
+                mock.patch.object(self.module.subprocess, "run") as run,
+                self.assertRaisesRegex(FileNotFoundError, "BET mask"),
             ):
                 self.module.apply_inverse_composite_transformation(
                     files_list=[str(input_file)],

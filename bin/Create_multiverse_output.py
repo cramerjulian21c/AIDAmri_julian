@@ -62,6 +62,27 @@ def find_registration_reference(composite_transform):
     )
 
 
+def find_bet_mask(registration_reference):
+    """Return the companion BET mask of the fMRI registration reference."""
+    if registration_reference.endswith(".nii.gz"):
+        mask_file = registration_reference[:-7] + "_mask.nii.gz"
+    elif registration_reference.endswith(".nii"):
+        mask_file = registration_reference[:-4] + "_mask.nii"
+    else:
+        raise ValueError(
+            "The fMRI registration reference must be a NIfTI file: "
+            f"{registration_reference}"
+        )
+
+    if not os.path.exists(mask_file):
+        raise FileNotFoundError(
+            "Could not find the BET mask belonging to the fMRI registration "
+            f"reference:\n{mask_file}"
+        )
+
+    return mask_file
+
+
 def validate_spatial_geometry(input_file, registration_reference):
     """Ensure a 4D fMRI file uses the grid of the registration reference.
 
@@ -136,6 +157,56 @@ def validate_spatial_geometry(input_file, registration_reference):
         )
 
 
+def apply_bet_mask(input_file, mask_file):
+    """Apply one 3D BET mask to every volume of a 4D fMRI image."""
+    input_img = nib.load(input_file)
+    mask_img = nib.load(mask_file)
+
+    if mask_img.ndim != 3:
+        raise ValueError(
+            f"Expected a 3D BET mask, but received {mask_img.ndim} dimensions "
+            f"for {mask_file}."
+        )
+
+    # Reuse the same grid validation and small affine tolerance as the
+    # registration-reference check. This accommodates harmless ANTs/FSL header
+    # normalisation while still rejecting a genuinely different voxel grid.
+    validate_spatial_geometry(input_file, mask_file)
+
+    input_data = input_img.get_fdata(dtype=np.float32)
+    mask_data = np.asanyarray(mask_img.dataobj)
+    brain_mask = np.isfinite(mask_data) & (mask_data > 0)
+    masked_data = np.ascontiguousarray(
+        input_data * brain_mask[..., np.newaxis],
+        dtype=np.float32,
+    )
+
+    if input_file.endswith(".nii.gz"):
+        output_file = input_file[:-7] + "_BET.nii.gz"
+    elif input_file.endswith(".nii"):
+        output_file = input_file[:-4] + "_BET.nii"
+    else:
+        raise ValueError(f"The fMRI input must be a NIfTI file: {input_file}")
+
+    output_header = input_img.header.copy()
+    output_header.set_data_dtype(np.float32)
+    output_img = nib.Nifti1Image(
+        masked_data,
+        input_img.affine,
+        header=output_header,
+    )
+    qform, qform_code = input_img.get_qform(coded=True)
+    sform, sform_code = input_img.get_sform(coded=True)
+    if qform is not None:
+        output_img.set_qform(qform, code=int(qform_code))
+    if sform is not None:
+        output_img.set_sform(sform, code=int(sform_code))
+    nib.save(output_img, output_file)
+
+    print(f"BET-masked 4D fMRI saved at: {output_file}")
+    return output_file
+
+
 def validate_sigma_template_geometry(sigma_template_address):
     """Ensure the export grid matches the SIGMA atlas used in registration."""
     sigma_atlas_address = os.path.join(
@@ -182,8 +253,9 @@ def apply_inverse_composite_transformation(
     Transform fMRI files into SIGMA space by inverting the exact composite
     transformation used to resample the SIGMA atlas into fMRI space.
 
-    The input fMRI files are passed directly to reg_resample.
-    No flipping or additional reorientation is performed.
+    Each input fMRI file is first masked with the BET mask belonging to the
+    registration reference. No flipping or additional reorientation is
+    performed.
     """
     transformed_files = []
 
@@ -200,6 +272,7 @@ def apply_inverse_composite_transformation(
     )
 
     registration_reference = find_registration_reference(composite_transform)
+    bet_mask_file = find_bet_mask(registration_reference)
     inverse_composite = os.path.join(
         func_folder,
         os.path.basename(composite_transform).replace(
@@ -210,8 +283,10 @@ def apply_inverse_composite_transformation(
 
     # The composite transform was estimated on the 3D fMRI BET reference.
     # It is valid for the 4D data only if their spatial grids are identical.
+    masked_files = []
     for input_file in files_list:
         validate_spatial_geometry(input_file, registration_reference)
+        masked_files.append(apply_bet_mask(input_file, bet_mask_file))
 
     # Matrixcomp_rsfMRI maps fMRI reference coordinates into SIGMA floating
     # coordinates. Invert the complete (affine + non-linear) transform and
@@ -227,8 +302,9 @@ def apply_inverse_composite_transformation(
         check=True,
     )
 
-    for input_file in tqdm(
-        files_list,
+    for input_file, masked_file in tqdm(
+        zip(files_list, masked_files),
+        total=len(files_list),
         desc="Applying transformations",
         unit="file",
     ):
@@ -245,14 +321,14 @@ def apply_inverse_composite_transformation(
             output_filename,
         )
 
-        # Use the original fMRI file directly as the floating image.
+        # Transform the brain-masked 4D fMRI data into SIGMA space.
         subprocess.run(
             [
                 "reg_resample",
                 "-ref",
                 sigma_template_address,
                 "-flo",
-                input_file,
+                masked_file,
                 "-trans",
                 inverse_composite,
                 "-res",

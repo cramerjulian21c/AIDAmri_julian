@@ -62,9 +62,11 @@ describe functional connectivity.
 
 To transform the EPI data into SIGMA space, the complete
 `*Matrixcomp_rsfMRI.nii.gz` transformation was inverted with NiftyReg
-`reg_transform -invNrr`. The motion-corrected 4D EPI was resampled into the
-SIGMA template grid with cubic interpolation. A temporal-mean image was then
-calculated from the registered 4D data.
+`reg_transform -invNrr`. Before resampling, the motion-corrected 4D EPI was
+masked in native fMRI space with the BET mask of the registration reference.
+The masked 4D EPI was then resampled into the SIGMA template grid with cubic
+interpolation. A temporal-mean image was calculated from the registered 4D
+data.
 
 The exported EPI is motion and slice-time corrected and has
 the first five volumes removed. It is exported before physiological
@@ -97,7 +99,9 @@ flowchart TD
     ANALYSIS --> FC["Regional time series + connectivity"]
     ATLAS --> FC
 
-    EPI --> EXPORT["Invert transformation + resample EPI"]
+    FREF --> BETMASK["Apply fMRI BET mask to 4D EPI"]
+    EPI --> BETMASK
+    BETMASK --> EXPORT["Invert transformation + resample masked EPI"]
     COMP --> EXPORT
     EXPORT --> SIGMA["4D EPI + temporal mean in SIGMA space"]
 ```
