@@ -17,6 +17,7 @@ Run from the repository root::
 
 import contextlib
 import io
+import stat
 import sys
 import tempfile
 import unittest
@@ -58,6 +59,11 @@ class ArtifactManifestTests(unittest.TestCase):
             self.assertEqual(
                 manifest_filename(folder, "anat"),
                 ".sub-test_ses-test_anat_aidamri_manifest.json",
+            )
+            manifest_file = folder / manifest_filename(folder, "anat")
+            self.assertEqual(
+                stat.S_IMODE(manifest_file.stat().st_mode),
+                0o644,
             )
             stage = load_manifest(folder, "anat")["stages"]["preprocessing"]
             self.assertEqual(stage["created_files"], ["output.nii.gz"])
@@ -128,6 +134,11 @@ class ArtifactManifestTests(unittest.TestCase):
             with contextlib.redirect_stdout(summary):
                 print_issue_summary(plans)
             summary_text = summary.getvalue()
+            self.assertIn(
+                "[INFO] Stroke mask files are present in 1 selected folder "
+                "and were preserved.",
+                summary_text,
+            )
             self.assertIn("sub-01 | ses-01 | anat", summary_text)
             self.assertIn(
                 f"[INFO] Not managed by the manifest; review manually: {unknown}",
