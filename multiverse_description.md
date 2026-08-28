@@ -9,8 +9,7 @@ the SIGMA in-vivo rat brain template and anatomical atlas.
 
 ### 1. Data inspection and reorientation
 
-The data were provided in BIDS-compatible NIfTI format, so no conversion was
-required. Images and NIfTI headers were inspected and reoriented to LIP (Left-Inferior-Posterior) orientation.
+Images and NIfTI headers were reoriented to LIP (Left-Inferior-Posterior) orientation.
 
 ### 2. T2 preprocessing and registration
 
@@ -28,8 +27,7 @@ labels.
 
 #### 3.1 Preprocessing and registration
 
-A three-dimensional fMRI reference was calculated as the temporal median of
-the EPI series. As for T2, bias-field correction was performed with ANTs
+As for T2, bias-field correction was performed with ANTs
 N4BiasFieldCorrection and brain extraction with FSL BET.
 
 The fMRI reference and anatomical T2 image were rigidly coregistered using one
@@ -47,16 +45,10 @@ into fMRI space.
 The four-dimensional EPI underwent slice-wise motion correction with FSL
 MCFLIRT. Differences in acquisition time between slices were corrected with
 FSL SliceTimer using the slice-timing information from the BIDS metadata.
-Spatial smoothing was performed in the
-in-plane dimensions with two-dimensional SUSAN, which reduces noise while
-preserving tissue boundaries and accounts for the anisotropic EPI resolution.
+
 Finally, temporal band-pass filtering between 0.01 and 0.2 Hz was applied to
 reduce slow signal drifts and high-frequency fluctuations while retaining the
 frequency range of interest for resting-state functional connectivity.
-
-Mean regional time series were extracted with the registered SIGMA atlas.
-Pearson correlation and Fisher-z-transformed matrices were calculated to
-describe functional connectivity.
 
 ### 4. Multiverse-specific output
 
@@ -88,31 +80,26 @@ The main outputs are:
 
 ```mermaid
 flowchart TD
-    DATA["Multiverse dataset"] --> T2["T2: ANTs N4 + FSL BET"]
-    T2 --> T2REG["SIGMA → T2 registration"]
+    DATA["Multiverse MRI data"] --> ORIENT["Reorientation to LIP"]
 
-    DATA --> FREF["fMRI reference: temporal median + ANTs N4 + FSL BET"]
-    T2 --> FMREG["T2 ↔ fMRI rigid registration"]
-    FREF --> FMREG
-    T2REG --> COMP["Combine transformations"]
+    ORIENT --> T2["T2: ANTs N4 + FSL BET"]
+    T2 --> T2REG["SIGMA-to-T2 registration: reg_aladin + reg_f3d"]
+
+    ORIENT --> FMRI["fMRI: ANTs N4 + FSL BET"]
+    T2 --> FMREG["Rigid T2-to-fMRI coregistration"]
+    FMRI --> FMREG
+    T2REG --> COMP["Combined SIGMA-to-fMRI transformation"]
     FMREG --> COMP
-    COMP --> ATLAS["SIGMA atlas in fMRI space"]
 
-    DATA --> EPI["Motion + slice-time correction"]
-    EPI --> ANALYSIS["Regression, SUSAN smoothing + band-pass filtering"]
-    ANALYSIS --> FC["Regional time series + connectivity"]
-    ATLAS --> FC
-
-    FREF --> BETMASK["Apply fMRI BET mask to 4D EPI"]
-    EPI --> BETMASK
-    BETMASK --> PROVISIONAL["Provisional 4D EPI in SIGMA space + temporal mean"]
+    ORIENT --> EPI["EPI: motion and slice-time correction; remove first 5 volumes"]
+    EPI --> MASK["Apply fMRI BET mask"]
+    MASK --> PROVISIONAL["Provisional SIGMA resampling + temporal mean"]
     COMP --> PROVISIONAL
-    PROVISIONAL --> RIGID["Residual rigid registration to SIGMA"]
-    RIGID --> COMPCORR["Compose corrected transformation"]
-    COMP --> COMPCORR
-    BETMASK --> EXPORT["Resample native masked 4D EPI once"]
-    COMPCORR --> EXPORT
-    EXPORT --> SIGMA["Corrected 4D EPI + final temporal mean in SIGMA space"]
+    PROVISIONAL --> RIGID["Residual rigid correction"]
+    RIGID --> CORRECTED["Compose and apply corrected transformation"]
+    COMP --> CORRECTED
+    MASK --> CORRECTED
+    CORRECTED --> OUTPUT["Corrected 4D EPI + final temporal mean in SIGMA space"]
 ```
 
 ## Tools used by AIDAmri
