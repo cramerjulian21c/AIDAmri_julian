@@ -24,11 +24,16 @@ FILE_PATTERNS = (
         "sub-*/ses-*/func/**/*"
         "_registered_on_SIGMA_template_temporal_mean_corrected.nii.gz"
     ),
-    (
-        "sub-*/ses-*/func/**/*"
-        "_registered_on_SIGMA_template_temporal_mean_corrected.nii.gz"
-    ),
 )
+
+# Each matched directory is copied recursively, including all files and nested
+# directories. Its own name is retained, but parent directories below func or
+# anat are flattened. Examples:
+# DIRECTORY_PATTERNS = (
+#     "sub-*/ses-*/func/**/regr",
+#     "sub-*/ses-*/anat/**/t2_values_extraction",
+# )
+DIRECTORY_PATTERNS = ("sub-*/ses-*/func/**/*_bold_EPI_mcf.mat",)
 
 
 def find_upload_files(project_root):
@@ -46,7 +51,27 @@ def find_upload_files(project_root):
             path for path in project_root.glob(pattern) if path.is_file()
         }
         matches.update(pattern_matches)
-        pattern_counts[pattern] = len(pattern_matches)
+        pattern_counts[("file", pattern)] = len(pattern_matches)
+
+    return sorted(matches), pattern_counts
+
+
+def find_upload_directories(project_root):
+    """Return unique directories matching the hard-coded directory patterns."""
+    project_root = Path(project_root).expanduser().resolve()
+    if not project_root.is_dir():
+        raise NotADirectoryError(
+            f"Project root does not exist or is not a directory: {project_root}"
+        )
+
+    matches = set()
+    pattern_counts = {}
+    for pattern in DIRECTORY_PATTERNS:
+        pattern_matches = {
+            path for path in project_root.glob(pattern) if path.is_dir()
+        }
+        matches.update(pattern_matches)
+        pattern_counts[("directory", pattern)] = len(pattern_matches)
 
     return sorted(matches), pattern_counts
 
@@ -73,30 +98,46 @@ def upload_relative_path(source_path, project_root):
 
 
 def copy_upload_files(project_root, output_root=None, dry_run=False):
-    """Copy selected files directly into their BIDS modality directories."""
+    """Copy selected files and directories into BIDS modality directories."""
     project_root = Path(project_root).expanduser().resolve()
     if output_root is None:
         output_root = project_root.parent / OUTPUT_DIRECTORY_NAME
     output_root = Path(output_root).expanduser().resolve()
 
-    source_files, pattern_counts = find_upload_files(project_root)
+    source_files, file_pattern_counts = find_upload_files(project_root)
+    source_directories, directory_pattern_counts = find_upload_directories(
+        project_root
+    )
+    pattern_counts = file_pattern_counts | directory_pattern_counts
 
     copy_plan = {}
-    for source_path in source_files:
+    sources = [(source_path, "file") for source_path in source_files]
+    sources.extend(
+        (source_path, "directory") for source_path in source_directories
+    )
+    for source_path, source_kind in sources:
         relative_path = upload_relative_path(source_path, project_root)
         destination_path = output_root / relative_path
-        previous_source = copy_plan.get(destination_path)
-        if previous_source is not None and previous_source != source_path:
+        previous_entry = copy_plan.get(destination_path)
+        if previous_entry is not None and previous_entry[0] != source_path:
             raise FileExistsError(
-                "Multiple source files would be copied to the same destination: "
-                f"{previous_source} and {source_path} -> {destination_path}"
+                "Multiple source paths would be copied to the same destination: "
+                f"{previous_entry[0]} and {source_path} -> {destination_path}"
             )
-        copy_plan[destination_path] = source_path
+        copy_plan[destination_path] = (source_path, source_kind)
 
-    for destination_path, source_path in copy_plan.items():
+    for destination_path, (source_path, source_kind) in copy_plan.items():
         if not dry_run:
-            destination_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, destination_path)
+            if source_kind == "directory":
+                shutil.copytree(
+                    source_path,
+                    destination_path,
+                    dirs_exist_ok=True,
+                    copy_function=shutil.copy2,
+                )
+            else:
+                destination_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, destination_path)
 
     return sorted(copy_plan), pattern_counts
 
@@ -145,8 +186,8 @@ def main(argv=None):
     except NotADirectoryError as error:
         parser.error(str(error))
 
-    for pattern, count in pattern_counts.items():
-        print(f"{count:>4} file(s): {pattern}")
+    for (path_kind, pattern), count in pattern_counts.items():
+        print(f"{count:>4} {path_kind}(s): {pattern}")
 
     action = "Would copy" if args.dry_run else "Copied"
     output_root = (
@@ -155,10 +196,10 @@ def main(argv=None):
         else args.project_root.expanduser().resolve().parent
         / OUTPUT_DIRECTORY_NAME
     )
-    print(f"{action} {len(copied_files)} file(s) to: {output_root}")
+    print(f"{action} {len(copied_files)} path(s) to: {output_root}")
 
     if not copied_files:
-        print("No files matched the configured FILE_PATTERNS.")
+        print("No files or directories matched the configured patterns.")
 
     return 0
 

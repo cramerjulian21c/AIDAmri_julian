@@ -91,6 +91,41 @@ class ExtractMultiverseUploadTests(unittest.TestCase):
                 Path("sub-01/ses-1/anat/anatomy_upload.nii.gz"),
             )
 
+    def test_copies_complete_directory_into_modality_folder(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            multiverse_root = Path(temp_dir) / "Multiverse"
+            project_root = multiverse_root / "proc_data_good"
+            output_root = multiverse_root / "Extracted_data_for_upload"
+            source_file = self._create_file(
+                project_root,
+                "sub-01/ses-1/func/deep/results/regr/nested/matrix.mat",
+                b"matrix data",
+            )
+            self._create_file(
+                project_root,
+                "Report/regr/ignored.mat",
+            )
+            self.module.DIRECTORY_PATTERNS = (
+                "sub-*/ses-*/func/**/regr",
+            )
+
+            copied, pattern_counts = self.module.copy_upload_files(project_root)
+
+            destination_directory = output_root / "sub-01/ses-1/func/regr"
+            destination_file = destination_directory / "nested/matrix.mat"
+            self.assertIn(destination_directory, copied)
+            self.assertEqual(
+                destination_file.read_bytes(),
+                source_file.read_bytes(),
+            )
+            self.assertEqual(
+                pattern_counts[
+                    ("directory", "sub-*/ses-*/func/**/regr")
+                ],
+                1,
+            )
+            self.assertFalse((output_root / "Report").exists())
+
     def test_rejects_two_sources_with_same_flattened_destination(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "proc_data_good"
