@@ -106,7 +106,7 @@ flowchart TD
 
 | Tool | Version | Description |
 |---|---:|---|
-| FSL | 5.0.11 | BET, FLIRT, MCFLIRT, SUSAN and temporal filtering |
+| FSL | 5.0.11 | BET, FLIRT, MCFLIRT, and temporal filtering |
 | NiftyReg | 1.5.55 | Registration and transformation handling |
 | ANTs | 2.6.2 | N4 bias-field correction |
 | Python | 3.10 | Pipeline execution |
