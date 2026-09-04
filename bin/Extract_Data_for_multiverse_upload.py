@@ -18,11 +18,11 @@ OUTPUT_DIRECTORY_NAME = "Extracted_data_for_upload"
 FILE_PATTERNS = (
     (
         "sub-*/ses-*/func/**/*"
-        "_registered_on_SIGMA_template_corrected.nii.gz"
+        "_registered_on_SIGMA_template_corrected_resampled_0p3mm.nii.gz"
     ),
     (
         "sub-*/ses-*/func/**/*"
-        "_registered_on_SIGMA_template_temporal_mean_corrected.nii.gz"
+        "_registered_on_SIGMA_template_temporal_mean_corrected_resampled_0p3mm.nii.gz"
     ),
 )
 
