@@ -14,6 +14,9 @@ COMPOSITE_SUFFIX = "Matrixcomp_rsfMRI.nii.gz"
 MAX_AFFINE_DISPLACEMENT_VOXELS = 0.1
 SIGMA_ATLAS_FILENAME = "SIGMA_InVivo_Anatomical_Brain_Atlas.nii.gz"
 MULTIVERSE_OUTPUT_FOLDER = "Multiverse_Output"
+INPUT_VOXEL_SIZE_MM = 0.15
+OUTPUT_VOXEL_SIZE_MM = 0.3
+VOXEL_SIZE_TOLERANCE_MM = 1e-4
 
 
 def nifti_stem(path):
@@ -253,6 +256,80 @@ def validate_sigma_template_geometry(sigma_template_address):
         )
 
 
+def downsample_nifti_by_block_mean(
+    input_path,
+    output_path,
+):
+    """Average 2x2x2 voxel blocks from 0.15 mm to 0.3 mm isotropic."""
+    input_img = nib.load(input_path)
+    if input_img.ndim not in (3, 4):
+        raise ValueError(
+            "Expected a 3D or 4D NIfTI file for spatial resampling, but "
+            f"received {input_img.ndim} dimensions for {input_path}."
+        )
+
+    spatial_shape = np.asarray(input_img.shape[:3], dtype=int)
+    spatial_zooms = nib.affines.voxel_sizes(input_img.affine)
+    if not np.allclose(
+        spatial_zooms,
+        INPUT_VOXEL_SIZE_MM,
+        rtol=0,
+        atol=VOXEL_SIZE_TOLERANCE_MM,
+    ):
+        raise ValueError(
+            f"Expected a {INPUT_VOXEL_SIZE_MM:g} mm isotropic input grid, "
+            f"but found voxel sizes {tuple(spatial_zooms)} for {input_path}."
+        )
+    if np.any(spatial_shape % 2):
+        raise ValueError(
+            "Exact 2x downsampling requires even spatial dimensions, but "
+            f"found {tuple(spatial_shape)} for {input_path}."
+        )
+
+    target_shape = tuple((spatial_shape // 2).tolist())
+    target_to_input_voxels = np.diag([2.0, 2.0, 2.0, 1.0])
+    target_to_input_voxels[:3, 3] = 0.5
+    target_affine = input_img.affine @ target_to_input_voxels
+
+    block_shape = tuple(
+        value
+        for size in spatial_shape
+        for value in (size // 2, 2)
+    )
+
+    def block_mean(volume):
+        return np.asanyarray(volume, dtype=np.float32).reshape(
+            block_shape
+        ).mean(axis=(1, 3, 5), dtype=np.float32)
+
+    if input_img.ndim == 3:
+        resampled_data = block_mean(input_img.dataobj)
+    else:
+        resampled_data = np.empty(
+            target_shape + (input_img.shape[3],),
+            dtype=np.float32,
+        )
+        for volume_index in range(input_img.shape[3]):
+            resampled_data[..., volume_index] = block_mean(
+                input_img.dataobj[..., volume_index]
+            )
+
+    output_img = nib.Nifti1Image(
+        resampled_data,
+        target_affine,
+        header=input_img.header,
+    )
+    output_img.set_data_dtype(np.float32)
+    nib.save(output_img, output_path)
+
+    print(
+        f"NIfTI block-averaged to {OUTPUT_VOXEL_SIZE_MM:g} mm isotropic "
+        "and saved at: "
+        f"{output_path}"
+    )
+    return output_path
+
+
 def apply_inverse_composite_transformation(
     files_list,
     func_folder,
@@ -265,7 +342,8 @@ def apply_inverse_composite_transformation(
     composite transformation and temporally averaged. A rigid residual
     correction is estimated between that mean and the SIGMA template, composed
     with the original inverse transform, and applied once to the native masked
-    4D data to produce the final corrected result.
+    4D data. The corrected 4D image and its temporal mean are finally resampled
+    to a 0.3 mm isotropic grid.
     """
     transformed_files = []
 
@@ -353,6 +431,16 @@ def apply_inverse_composite_transformation(
             input_stem
             + "_registered_on_SIGMA_template_temporal_mean_corrected.nii.gz",
         )
+        corrected_resampled = os.path.join(
+            output_directory,
+            input_stem
+            + "_registered_on_SIGMA_template_corrected_resampled_0p3mm.nii.gz",
+        )
+        corrected_mean_resampled = os.path.join(
+            output_directory,
+            input_stem
+            + "_registered_on_SIGMA_template_temporal_mean_corrected_resampled_0p3mm.nii.gz",
+        )
 
         # First transform: create a provisional 4D image in SIGMA space.
         subprocess.run(
@@ -427,7 +515,12 @@ def apply_inverse_composite_transformation(
         )
 
         compute_temporal_mean(corrected_file, corrected_mean)
-        transformed_files.append(corrected_file)
+        downsample_nifti_by_block_mean(corrected_file, corrected_resampled)
+        downsample_nifti_by_block_mean(
+            corrected_mean,
+            corrected_mean_resampled,
+        )
+        transformed_files.append(corrected_resampled)
 
     return transformed_files
 
@@ -570,7 +663,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=(
             "Register BET-masked 4D fMRI data to a SIGMA template, refine the "
-            "alignment rigidly and compute temporal mean images."
+            "alignment rigidly, compute temporal mean images and resample the "
+            "corrected outputs to 0.3 mm isotropic resolution."
         )
     )
 

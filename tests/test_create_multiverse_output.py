@@ -54,8 +54,9 @@ class MultiverseTransformTests(unittest.TestCase):
             mask_data = np.zeros((4, 5, 6), dtype=np.uint8)
             mask_data[1:3, 1:4, 1:5] = 1
             nib.save(nib.Nifti1Image(mask_data, np.eye(4)), bet_mask)
-            save_nifti(template, (7, 8, 9))
-            save_nifti(atlas, (7, 8, 9))
+            sigma_affine = np.diag([0.15, 0.15, 0.15, 1.0])
+            save_nifti(template, (8, 10, 12), sigma_affine)
+            save_nifti(atlas, (8, 10, 12), sigma_affine)
             input_data = np.ones((4, 5, 6, 3), dtype=np.float32)
             nib.save(nib.Nifti1Image(input_data, np.eye(4)), input_file)
             composite.write_bytes(b"composite")
@@ -119,19 +120,51 @@ class MultiverseTransformTests(unittest.TestCase):
                 "sub-01_task-rest_bold_EPI_mcf_f_"
                 "registered_on_SIGMA_template_temporal_mean_corrected.nii.gz"
             )
+            corrected_resampled = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_corrected_resampled_0p3mm.nii.gz"
+            )
+            corrected_mean_resampled = output_dir / (
+                "sub-01_task-rest_bold_EPI_mcf_f_"
+                "registered_on_SIGMA_template_temporal_mean_corrected_"
+                "resampled_0p3mm.nii.gz"
+            )
             masked_input = output_dir / "sub-01_task-rest_bold_EPI_mcf_f_BET.nii.gz"
-            self.assertEqual(outputs, [str(corrected)])
+            self.assertEqual(outputs, [str(corrected_resampled)])
             masked_data = nib.load(masked_input).get_fdata()
             self.assertEqual(masked_data.shape, (4, 5, 6, 3))
             self.assertTrue(np.all(masked_data[mask_data == 0] == 0))
             self.assertTrue(np.all(masked_data[mask_data > 0] == 1))
-            self.assertEqual(nib.load(provisional).shape, (7, 8, 9, 3))
-            self.assertEqual(nib.load(provisional_mean).shape, (7, 8, 9))
-            self.assertEqual(nib.load(second_registration).shape, (7, 8, 9))
+            self.assertEqual(nib.load(provisional).shape, (8, 10, 12, 3))
+            self.assertEqual(nib.load(provisional_mean).shape, (8, 10, 12))
+            self.assertEqual(nib.load(second_registration).shape, (8, 10, 12))
             self.assertTrue(second_affine.is_file())
             self.assertTrue(corrected_transform.is_file())
-            self.assertEqual(nib.load(corrected).shape, (7, 8, 9, 3))
-            self.assertEqual(nib.load(corrected_mean).shape, (7, 8, 9))
+            self.assertEqual(nib.load(corrected).shape, (8, 10, 12, 3))
+            self.assertEqual(nib.load(corrected_mean).shape, (8, 10, 12))
+            self.assertEqual(
+                nib.load(corrected_resampled).header.get_zooms()[:3],
+                (0.3, 0.3, 0.3),
+            )
+            self.assertEqual(
+                nib.load(corrected_mean_resampled).header.get_zooms()[:3],
+                (0.3, 0.3, 0.3),
+            )
+            self.assertEqual(
+                nib.load(corrected_resampled).shape,
+                (4, 5, 6, 3),
+            )
+            self.assertEqual(
+                nib.load(corrected_mean_resampled).shape,
+                (4, 5, 6),
+            )
+            expected_resampled_affine = sigma_affine.copy()
+            expected_resampled_affine[:3, :3] *= 2
+            expected_resampled_affine[:3, 3] = 0.075
+            np.testing.assert_allclose(
+                nib.load(corrected_resampled).affine,
+                expected_resampled_affine,
+            )
             self.assertEqual(
                 run.call_args_list,
                 [
@@ -206,6 +239,50 @@ class MultiverseTransformTests(unittest.TestCase):
                     ),
                 ],
             )
+
+    def test_rejects_non_0p15mm_grid_before_resampling(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "corrected.nii.gz"
+            output_file = Path(temp_dir) / "resampled.nii.gz"
+            wrong_affine = np.diag([0.15, 0.2, 0.15, 1.0])
+            save_nifti(input_file, (8, 10, 12), wrong_affine)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "Expected a 0.15 mm isotropic input grid",
+            ):
+                self.module.downsample_nifti_by_block_mean(
+                    str(input_file),
+                    str(output_file),
+                )
+
+            self.assertFalse(output_file.exists())
+
+    def test_downsamples_each_4d_volume_by_2x2x2_block_mean(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_file = Path(temp_dir) / "corrected.nii.gz"
+            output_file = Path(temp_dir) / "resampled.nii.gz"
+            affine = np.diag([0.15, 0.15, 0.15, 1.0])
+            x, y, z = np.indices((4, 4, 4))
+            first_volume = 100 * x + 10 * y + z
+            input_data = np.stack(
+                [first_volume, first_volume + 1000],
+                axis=3,
+            ).astype(np.float32)
+            nib.save(nib.Nifti1Image(input_data, affine), input_file)
+
+            self.module.downsample_nifti_by_block_mean(
+                str(input_file),
+                str(output_file),
+            )
+
+            output_img = nib.load(output_file)
+            output_data = output_img.get_fdata(dtype=np.float32)
+            self.assertEqual(output_data.shape, (2, 2, 2, 2))
+            self.assertEqual(output_data[0, 0, 0, 0], 55.5)
+            self.assertEqual(output_data[1, 1, 1, 0], 277.5)
+            self.assertEqual(output_data[0, 0, 0, 1], 1055.5)
+            self.assertEqual(output_data[1, 1, 1, 1], 1277.5)
 
     def test_rejects_fmri_on_a_different_spatial_grid(self):
         with tempfile.TemporaryDirectory() as temp_dir:
