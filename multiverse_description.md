@@ -44,7 +44,10 @@ into fMRI space.
 
 The four-dimensional EPI underwent slice-wise motion correction with FSL
 MCFLIRT. Differences in acquisition time between slices were corrected with
-FSL SliceTimer using the slice-timing information from the BIDS metadata.
+FSL SliceTimer using the slice-timing information from the BIDS metadata. The
+first five volumes of each EPI time series were then removed before all
+subsequent processing steps. Consequently, the final preprocessed 4D EPI in
+SIGMA space contains five fewer time points than the original acquisition.
 
 Finally, temporal band-pass filtering between 0.01 and 0.2 Hz was applied to
 reduce slow signal drifts and high-frequency fluctuations while retaining the
