@@ -648,6 +648,62 @@ Connectivity matrices are stored as `.txt` and `.mat` files in `.../dwi/connecti
 
 DSI Studio creates matrices for different connectivity definitions, for example fibers passing through a region and fibers ending in a region.
 
+To extract a saved connectivity metric across a cohort, run the following from the repository root:
+
+```bash
+python bin/3.2_DTIConnectivity/extract_connectivity_metrics.py \
+  --input /path/to/proc_folder \
+  --atlas parental \
+  --connectivity pass \
+  --level t2r \
+  --metric number_of_tracts \
+  --group /path/to/group_tDCS_Sham.csv \
+  --output /path/to/parental_pass_track_counts.csv
+```
+
+This script reads existing `sub-*/ses-*/dwi/connectivity/*.connectivity.mat` files. It does not run tractography or change the source MAT files. Both original DSI MAT files and MATLAB-compatible files with sanitized variable names are supported.
+
+| Argument | Meaning |
+|---|---|
+| `--input` | BIDS-like processed cohort folder containing subject/session folders |
+| `--atlas` | `parental` (`AnnoSplit_parental`) or `detailed` (`AnnoSplit`) |
+| `--connectivity` | `pass` (regions touched along a track) or `end` (endpoint regions) |
+| `--level` | `t2r` (one column per region) or `r2r` (one column per unordered region pair) |
+| `--metric` | Metric name without the level suffix; default: `number_of_tracts`. Examples: `fa`, `md`, `mean_length_mm` |
+| `--group` | Optional CSV whose column headers are group names and whose cells contain subject folder names; omit to exclude the `group` column |
+| `--output` | Destination `.csv` file |
+| `--region1`, `--region2` | Optional pair selection using exact full region names from the MAT files, available together only with `--level r2r` |
+
+The group CSV has the following layout; blank cells are allowed when groups have different numbers of subjects. Comma, semicolon and tab delimiters are detected automatically.
+
+```csv
+tDCS,Sham
+sub-NR1042,sub-NR1037
+sub-NR1044,sub-NR1051
+```
+
+Each output row represents one subject/session and begins with `subject,session`. When `--group` is supplied, a `group` column is inserted after `session`; group membership is matched by the exact subject folder name and applies to all sessions, and every exported subject must have a group assignment. Without `--group`, the `group` column is omitted entirely. Region columns are aligned by their stored names, using the union of names across the selected cohort. Missing regions produce empty cells; a measured zero remains `0`.
+
+For all region pairs, use `--level r2r`. Each distinct pair appears once as `<region1>_x_<region2>`; reversed pairs and diagonal entries are excluded. Region names and pair order are sorted consistently. Matrices must be symmetric. For N regions, there are N(N-1)/2 metric columns. A complete detailed CSV is intended for automated analysis; it exceeds Excel's worksheet column limit.
+
+To extract only the left/right primary motor cortex pair:
+
+```bash
+python bin/3.2_DTIConnectivity/extract_connectivity_metrics.py \
+  --input /path/to/proc_folder \
+  --atlas parental --connectivity pass --level r2r \
+  --metric number_of_tracts \
+  --region1 L_Primary_motor_area --region2 R_Primary_motor_area \
+  --group /path/to/group_tDCS_Sham.csv \
+  --output /path/to/primary_motor_pair.csv
+```
+
+This produces four columns: `subject,session,group,L_Primary_motor_area_x_R_Primary_motor_area`. For the left motor cortex/corticospinal tract pair, replace `--region2 R_Primary_motor_area` with `--region2 L_corticospinal_tract`.
+
+Region selection requires the full region names exactly as stored in the MAT files, including capitalization, underscores and punctuation. Names are read from `region_names` or the original DSI `name` field. Abbreviations such as `L_MOp` or `L_cst` are not resolved; no external atlas tables are consulted. For a detailed cortical layer, use for example `--region1 'L_Primary_motor_area,_Layer_5' --region2 'R_Primary_motor_area,_Layer_5'`. Quote names containing spaces or shell-sensitive characters. Each name selects one stored region; cortical layers or child regions are not combined. Unknown regions, identical region pairs, duplicate group assignments, missing group assignments when a group CSV is supplied, unavailable metrics, and missing or duplicate matching MAT files are reported as errors. Only sessions with a `dwi` folder are considered; subjects/sessions without DWI are not added to the CSV.
+
+A export produces one cohort CSV for the selected metric, atlas, connectivity definition and level; no CSVs are automatically written beside the MAT files.
+
 The connectivity matrices can be visualized with:
 
 ```text
