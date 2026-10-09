@@ -42,6 +42,8 @@ import nipype.interfaces.fsl as fsl
 import shutil
 import subprocess
 import pandas as pd
+import tempfile
+from scipy.io import loadmat, savemat
 
 def scaleBy10(input_path, inv):
     data = nib.load(input_path)
@@ -730,6 +732,67 @@ def tracking(dsi_studio, dir_in, track_param='default', min_voxel_size_mm=0.1, t
     if os.path.exists(tdi_color_file):
         os.replace(tdi_color_file, tdi_color_renamed)
 
+def make_connectivity_matlab_compatible(mat_path):
+    """Rewrite a DSI MAT export with MATLAB identifiers and MAT-v5 encoding.
+
+    Keep all metric arrays and the legacy ``connectivity``, ``name`` and
+    ``atlas`` fields. Add decoded region names and a two-column cell array
+    mapping original DSI variable names to their MATLAB names.
+    """
+    exported = {
+        key: value for key, value in loadmat(mat_path).items()
+        if not key.startswith('__')
+    }
+    # Reserve existing valid identifiers so a sanitized metric cannot overwrite
+    # another variable (e.g. "fa t2r" and "fa_t2r").
+    identifier = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,62}\Z')
+    used = {key for key in exported if identifier.fullmatch(key)}
+    converted = {}
+    mapping = []
+    for original, data in exported.items():
+        if identifier.fullmatch(original):
+            name = original
+        else:
+            base = re.sub(r'[^A-Za-z0-9_]+', '_', original).strip('_') or 'variable'
+            if not base[0].isalpha():
+                base = 'v_' + base
+            name = base[:63]
+            suffix = 2
+            while name in used:
+                ending = f'_{suffix}'
+                name = base[:63 - len(ending)] + ending
+                suffix += 1
+        used.add(name)
+        converted[name] = data
+        mapping.append((original, name))
+
+    if 'region_names' not in converted and 'name' in exported:
+        raw_names = exported['name']
+        if raw_names.dtype.kind in 'ui':
+            text = raw_names.astype(np.uint8).ravel().tobytes().decode('utf-8')
+        elif raw_names.dtype.kind == 'U':
+            text = ''.join(raw_names.ravel())
+        elif raw_names.dtype.kind == 'S':
+            text = b''.join(raw_names.ravel()).decode('utf-8')
+        else:
+            raise ValueError(f'Unsupported DSI region-name type: {raw_names.dtype}')
+        names = text.rstrip('\x00\r\n').splitlines()
+        converted['region_names'] = np.asarray(names, dtype=object).reshape(-1, 1)
+    if 'matlab_variable_name_map' not in converted:
+        converted['matlab_variable_name_map'] = np.asarray(mapping, dtype=object).reshape(-1, 2)
+
+    # Replace only after a successful save; keep the original export on failure.
+    mat_path = os.path.abspath(mat_path)
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(mat_path), suffix='.mat', delete=False) as stream:
+        temporary_path = stream.name
+    try:
+        savemat(temporary_path, converted, format='5', do_compression=True, appendmat=False)
+        os.chmod(temporary_path, os.stat(mat_path).st_mode & 0o777)
+        os.replace(temporary_path, mat_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
 def connectivity(dsi_studio, dir_in, dir_seeds, dir_out, dir_con, make_isotropic=0, legacy=False):
     """
     Calculates connectivity data for pass-through and endpoint definitions.
@@ -879,6 +942,8 @@ def connectivity(dsi_studio, dir_in, dir_seeds, dir_out, dir_con, make_isotropic
                     1
                 )
 
+                if output_path.endswith('.mat'):
+                    make_connectivity_matlab_compatible(output_path)
                 os.replace(output_path, os.path.join(output_dir, renamed_name))
 
             move_files(tract_dir, connectivity_dir, "/*.txt")
