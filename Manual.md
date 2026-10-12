@@ -642,6 +642,28 @@ python dsi_main.py -i .../dwi/testData_dwi.nii.gz
 
 By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread-count`).
 
+Use `-t` or `--track-params` to select fiber tracking settings. Available presets are `default`, `mouse`, `rat`, `aidamriv2_set` and `test`; preset names are case-insensitive. If this option is omitted, `default` uses the stored DSI Studio tracking settings (`parameter_id`). For example:
+
+```bash
+python dsi_main.py -i .../dwi/testData_dwi.nii.gz -t mouse
+```
+
+To supply your own values, use `name=value` assignments in any order. Unspecified values are taken from the `mouse` preset:
+
+```bash
+python dsi_main.py -i .../dwi/testData_dwi.nii.gz \
+  --track-params tract_count=1000 step_size=0.05 turning_angle=55
+```
+
+Allowed names are `tract_count`, `step_size`, `turning_angle`, `check_ending`, `fa_threshold`, `smoothing`, `min_length` and `max_length`. Choose either one preset or named values.
+
+For batch processing, use the same values with `--dsi-track-param`:
+
+```bash
+python batchProc.py -i /path/to/proc_folder -t dwi \
+  --dsi-track-param tract_count=1000 step_size=0.05 turning_angle=55
+```
+
 The output is stored in the DTI folder. Diffusion metric maps such as FA, AD, RD and MD are stored in `.../dwi/DSI_studio`.
 
 Connectivity matrices are stored as `.txt` and `.mat` files in `.../dwi/connectivity`.
