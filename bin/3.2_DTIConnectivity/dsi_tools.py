@@ -640,11 +640,6 @@ TRACKING_PARAM_SETS = {
     "default": {
         "parameter_id": "0AD7A33C9A99193FE8D5123F0AD7233CCDCCCC3D9A99993EbF04240420FdcaCDCC4C3Ec"
     },
-    "mouse": {
-        "tract_count": 1000000, "step_size": 0.01, "turning_angle": 45,
-        "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
-        "min_length": 0.3, "max_length": 15.0,
-    },
     "aidamriv2_set": {
         "tract_count": 1000000, "step_size": 0.01, "turning_angle": 55,
         "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
@@ -664,7 +659,7 @@ TRACKING_PARAM_SETS = {
 
 
 def normalize_tracking_params(values):
-    """Resolve a preset or name=value overrides of the mouse tracking settings."""
+    """Resolve a preset or name=value overrides of the rat tracking settings."""
     if isinstance(values, str):
         values = [values]
     if isinstance(values, list) and len(values) == 1 and isinstance(values[0], str) and '=' not in values[0]:
@@ -691,7 +686,7 @@ def normalize_tracking_params(values):
     else:
         raise ValueError('Tracking parameters must be a preset or name=value assignments.')
 
-    params = TRACKING_PARAM_SETS['mouse'].copy()
+    params = TRACKING_PARAM_SETS['rat'].copy()
     for name, raw_value in overrides.items():
         if name not in params:
             raise ValueError(f"Unknown tracking parameter '{name}'. Choose: {', '.join(params)}")
@@ -722,7 +717,7 @@ def normalize_tracking_params(values):
 
 
 def tracking(dsi_studio, dir_in, track_param='default', thread_count=1, legacy=False):
-    """Perform tracking with a preset or named overrides of the mouse settings."""
+    """Perform tracking with a preset or named overrides of the rat settings."""
     dsi_studio = resolve_command_path(dsi_studio)
     fib_dir = os.path.abspath(dir_in)
     if not os.path.isdir(fib_dir):

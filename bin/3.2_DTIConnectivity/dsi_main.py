@@ -121,7 +121,7 @@ if __name__ == '__main__':
                         nargs='+',
                         default=['default'],
                         metavar='PRESET_OR_NAME=VALUE',
-                        help='Use a preset (default, mouse, rat, aidamriv2_set, test) or named values, e.g. -t tract_count=1000 step_size=0.05. Unspecified custom values use the mouse preset. Allowed names: tract_count, step_size, turning_angle, check_ending, fa_threshold, smoothing, min_length, max_length.',
+                        help='Use a preset (default, rat, aidamriv2_set, test) or named values, e.g. -t tract_count=1000 step_size=0.05. Unspecified custom values use the rat preset. Allowed names: tract_count, step_size, turning_angle, check_ending, fa_threshold, smoothing, min_length, max_length.',
                         required=False
                        )
     parser.add_argument('--thread-count',

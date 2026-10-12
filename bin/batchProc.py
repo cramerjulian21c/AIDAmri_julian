@@ -1356,7 +1356,7 @@ if __name__ == "__main__":
         "--dsi-track-param",
         nargs="+",
         metavar="PRESET_OR_NAME=VALUE",
-        help="Tracking preset (default, mouse, rat, aidamriv2_set, test) or named values, e.g. --dsi-track-param tract_count=1000 step_size=0.05. Unspecified custom values use the mouse preset; omitted uses dsi_main.py default"
+        help="Tracking preset (default, rat, aidamriv2_set, test) or named values, e.g. --dsi-track-param tract_count=1000 step_size=0.05. Unspecified custom values use the rat preset; omitted uses dsi_main.py default"
     )
     dsi.add_argument(
         "--dsi-skip-motion-correction",
