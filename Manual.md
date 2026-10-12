@@ -642,7 +642,7 @@ python dsi_main.py -i .../dwi/testData_dwi.nii.gz
 
 By default, `dsi_main.py` uses matching `.bval` and `.bvec` files automatically. Optional parameters include the reconstruction method (`-r dti` or `-r gqi`), tracking settings (`-t`), in vivo or ex vivo settings (`-v`), isotropic resampling (`-m`) and the number of threads (`--thread-count`).
 
-Use `-t` or `--track-params` to select fiber tracking settings. Available presets are `default`, `mouse`, `rat`, `aidamriv2_set` and `test`; preset names are case-insensitive. If this option is omitted, `default` uses the stored DSI Studio tracking settings (`parameter_id`). For example:
+Use `-t` or `--track-params` to select fiber tracking settings. Available presets are `default`, `mouse`, `aidamriv2_set` and `test`; preset names are case-insensitive. If this option is omitted, `default` uses the stored DSI Studio tracking settings (`parameter_id`). For example:
 
 ```bash
 python dsi_main.py -i .../dwi/testData_dwi.nii.gz -t mouse

@@ -650,11 +650,6 @@ TRACKING_PARAM_SETS = {
         "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
         "min_length": 0.3, "max_length": 120.0,
     },
-    "rat": {
-        "tract_count": 1000000, "step_size": 0.01, "turning_angle": 60,
-        "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
-        "min_length": 0.3, "max_length": 20.0,
-    },
     "test": {
         "tract_count": 1000, "step_size": 0.01, "turning_angle": 45,
         "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
