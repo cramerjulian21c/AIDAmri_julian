@@ -655,6 +655,11 @@ TRACKING_PARAM_SETS = {
         "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
         "min_length": 0.3, "max_length": 15.0,
     },
+    "julian_tdcs": {
+            "tract_count": 1000000, "step_size": 0.2, "turning_angle": 45,
+            "check_ending": 0, "fa_threshold": 0.02, "smoothing": 0.1,
+            "min_length": 3, "max_length": 15.0,
+        },
 }
 
 
