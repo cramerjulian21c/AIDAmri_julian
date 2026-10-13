@@ -2,6 +2,8 @@
 
 Read existing MAT files only. Each output row represents one subject/session;
 columns contain individual regions (t2r) or unique region pairs (r2r).
+Sessions missing the selected MAT file are skipped with a warning.
+Exported CSV files use the system's normal permissions for new files.
 """
 
 import argparse
@@ -11,7 +13,8 @@ import difflib
 from itertools import chain, combinations
 from pathlib import Path
 import re
-import tempfile
+import sys
+import uuid
 import os
 
 import numpy as np
@@ -131,6 +134,11 @@ def discover_samples(root, atlas, connectivity, level, metric):
     for directory in directories:
         candidates = sorted(path for path in (directory / "connectivity").glob("*.mat")
                             if pattern.search(path.name))
+        if not candidates:
+            print(f"WARNING: Skipping {directory.parent.parent.name}/{directory.parent.name}: "
+                  f"no {atlas}/{connectivity} MAT file found in {directory / 'connectivity'}.",
+                  file=sys.stderr)
+            continue
         if len(candidates) != 1:
             raise ValueError(f"Expected one {atlas}/{connectivity} MAT file in {directory}; "
                              f"found {len(candidates)}.")
@@ -146,6 +154,8 @@ def discover_samples(root, atlas, connectivity, level, metric):
             raise ValueError(f"{path}: {error}") from error
         samples.append(Sample(directory.parent.parent.name, directory.parent.name,
                               path, regions, variable))
+    if not samples:
+        raise ValueError(f"No sessions with a matching {atlas}/{connectivity} MAT file found in {root}.")
     return samples
 
 
@@ -240,10 +250,17 @@ def export_cohort(root, group_csv, output, atlas, connectivity, level,
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
-                                         dir=output.parent, prefix=".connectivity_",
-                                         suffix=".csv", delete=False) as stream:
-            temporary_path = Path(stream.name)
+        # Exclusive creation respects umask and inherited permissions, while
+        # keeping incomplete exports separate from the destination.
+        while True:
+            candidate = output.parent / f".connectivity_{uuid.uuid4().hex}.csv"
+            try:
+                stream = candidate.open("x", encoding="utf-8", newline="")
+            except FileExistsError:
+                continue
+            temporary_path = candidate
+            break
+        with stream:
             writer = csv.writer(stream)
             writer.writerow(chain(metadata, columns))
             for sample in samples:
