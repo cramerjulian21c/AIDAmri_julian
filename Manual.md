@@ -420,6 +420,9 @@ Please have a look into the help page of `batchProc.py` for more information on 
 python batchProc.py -h
 ```
 
+> [!NOTE]
+> Please also have a look into our [helper_tools](bin/helper_tools) folder, which contains many helpful additional scripts for data preparation, quality control and visual inspection.
+
 <h2 id="processing-single-files-step-by-step">Processing single files step-by-step <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 Every script has arguments that can be specified when calling the script. For more information on the arguments, every script has a help page which can be accessed by calling the script with the `-h` flag. The following sections provide examples of how to process single files step-by-step.
@@ -694,7 +697,7 @@ This script reads existing `sub-*/ses-*/dwi/connectivity/*.connectivity.mat` fil
 | `--metric` | Metric name without the level suffix; default: `number_of_tracts`. Examples: `fa`, `md`, `mean_length_mm` |
 | `--group` | Optional CSV whose column headers are group names and whose cells contain subject folder names; omit to exclude the `group` column |
 | `--output` | Destination `.csv` file |
-| `--region1`, `--region2` | Optional pair selection using exact full region names from the MAT files, available together only with `--level r2r` |
+| `--region1`, `--region2` | Optional pair selection using exact full region names from the atlas txt files, available together only with `--level r2r` |
 
 The group CSV has the following layout; blank cells are allowed when groups have different numbers of subjects. Comma, semicolon and tab delimiters are detected automatically.
 
