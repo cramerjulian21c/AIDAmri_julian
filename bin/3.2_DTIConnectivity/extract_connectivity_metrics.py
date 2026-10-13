@@ -263,19 +263,19 @@ def export_cohort(root, group_csv, output, atlas, connectivity, level,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True, help="BIDS-like proc folder")
-    parser.add_argument("--atlas", choices=("parental", "detailed"), required=True)
-    parser.add_argument("--connectivity", choices=("pass", "end"), required=True)
-    parser.add_argument("--level", choices=("t2r", "r2r"), required=True,
+    parser.add_argument("-i", "--input", type=Path, required=True, help="BIDS-like proc folder")
+    parser.add_argument("-a", "--atlas", choices=("parental", "detailed"), required=True)
+    parser.add_argument("-c", "--connectivity", choices=("pass", "end"), required=True)
+    parser.add_argument("-l", "--level", choices=("t2r", "r2r"), required=True,
                         help="One value per region or per unique region pair")
-    parser.add_argument("--metric", default="number_of_tracts",
+    parser.add_argument("-m", "--metric", default="number_of_tracts",
                         help="Metric without t2r/r2r suffix (default: number_of_tracts)")
-    parser.add_argument("--group", type=Path,
+    parser.add_argument("-g", "--group", type=Path,
                         help="Optional CSV: group names in the header, subject IDs below; "
                              "omit to exclude the group column")
-    parser.add_argument("--output", type=Path, required=True, help="Destination CSV")
-    parser.add_argument("--region1", help="Exact first r2r region name from the MAT file, e.g. L_Primary_motor_area")
-    parser.add_argument("--region2", help="Exact second r2r region name from the MAT file, e.g. R_Primary_motor_area")
+    parser.add_argument("-o", "--output", type=Path, required=True, help="Destination CSV")
+    parser.add_argument("-r1", "--region1", help="Exact first r2r region name from the MAT file, e.g. L_Primary_motor_area")
+    parser.add_argument("-r2", "--region2", help="Exact second r2r region name from the MAT file, e.g. R_Primary_motor_area")
     args = parser.parse_args(argv)
     if bool(args.region1) != bool(args.region2):
         parser.error("Provide both --region1 and --region2 together.")
