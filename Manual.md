@@ -420,6 +420,9 @@ Please have a look into the help page of `batchProc.py` for more information on 
 python batchProc.py -h
 ```
 
+> [!NOTE]
+> Please also have a look into our [helper_tools](bin/helper_tools) folder, which contains many helpful additional scripts for data preparation, quality control and visual inspection.
+
 <h2 id="processing-single-files-step-by-step">Processing single files step-by-step <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h2>
 
 Every script has arguments that can be specified when calling the script. For more information on the arguments, every script has a help page which can be accessed by calling the script with the `-h` flag. The following sections provide examples of how to process single files step-by-step.
