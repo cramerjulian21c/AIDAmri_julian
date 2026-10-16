@@ -20,8 +20,8 @@ dwi folder's process log, preserving stdout and stderr separately.
 Use the batchProc.py timestamp format and Europe/Berlin time zone.
 Outside a dwi folder, use a process log beside the image instead.
 For identifiable subject/dwi folders, record created and modified outputs
-in the dwi manifest under stage processing. Otherwise warn and skip tracking.
-When a parent batch owns processing tracking for the same dwi folder,
+in the dwi manifest under stage extraction. Otherwise warn and skip tracking.
+When a parent batch owns extraction tracking for the same dwi folder,
 keep logging but leave manifest tracking to that parent.
 Append Git information at the end of each standalone run, including failures.
 During batch runs, leave the header and final Git block to the parent once per session.
@@ -50,7 +50,7 @@ from common.script_logging import (
     _TeeStream, append_git_information, build_script_log_path, format_script_log_header,
 )
 
-PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
+PARENT_TRACKING_ENV = "AIDAMRI_DTI_EXTRACTION_TRACKED_BY_PARENT"
 PARENT_GIT_LOG_ENV = "AIDAMRI_DTI_GIT_LOGGED_BY_PARENT"
 PARENT_HEADER_LOG_ENV = "AIDAMRI_DTI_HEADER_LOGGED_BY_PARENT"
 
@@ -74,7 +74,7 @@ def _finalize_tracking(tracker):
     try:
         tracker.finalize()
     except (OSError, ValueError) as error:
-        print(f"Error: Cannot finalize processing manifest in '{tracker.folder}': {error}", file=sys.stderr)
+        print(f"Error: Cannot finalize extraction manifest in '{tracker.folder}': {error}", file=sys.stderr)
         return False
     return True
 
@@ -201,9 +201,9 @@ def main(argv=None):
             if not managed_by_parent:
                 try:
                     # Snapshot before opening the log so a new log is also tracked.
-                    tracker = start_output_tracking(folder, "dwi", "processing")
+                    tracker = start_output_tracking(folder, "dwi", "extraction")
                 except (OSError, ValueError) as error:
-                    tracking_error = f"Error: Cannot start processing manifest tracking in '{folder}': {error}"
+                    tracking_error = f"Error: Cannot start extraction manifest tracking in '{folder}': {error}"
         with log_path.open("a", encoding="utf-8", buffering=1) as log:
             with redirect_stdout(_TeeStream(sys.stdout, log)), redirect_stderr(_TeeStream(sys.stderr, log)):
                 if not _parent_owns_log_section(folder, PARENT_HEADER_LOG_ENV):

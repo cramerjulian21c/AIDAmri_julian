@@ -22,12 +22,12 @@ Replace cohort tables atomically; leave existing tables unchanged with a
 warning when no valid rows are available for a metric.
 Cohort CSVs use normal new-file permissions, respecting umask and inherited permissions.
 Show warnings and errors in the terminal; the extractor writes its own log.
-Track dwi/processing outputs around each extractor invocation and finalize
+Track dwi/extraction outputs around each extractor invocation and finalize
 even after child-process failure. Pass the tracked folder only to that child
 so the extractor does not start a second tracker for the same folder.
 Suppress normal extractor output such as Done messages during batch runs.
 Write one extractor header per session and batch invocation before the first
-metric, inside processing tracking; suppress the headers in all children.
+metric, inside extraction tracking; suppress the headers in all children.
 Suppress the child's Git block and append Git information once per attempted
 session to its existing process log after all metrics, including failures.
 Fully skipped sessions do not receive a Git block.
@@ -61,7 +61,7 @@ from common.script_logging import append_git_information, build_script_log_path,
 
 
 METRICS = ("fa", "md", "rd", "ad")
-PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
+PARENT_TRACKING_ENV = "AIDAMRI_DTI_EXTRACTION_TRACKED_BY_PARENT"
 PARENT_GIT_LOG_ENV = "AIDAMRI_DTI_GIT_LOGGED_BY_PARENT"
 PARENT_HEADER_LOG_ENV = "AIDAMRI_DTI_HEADER_LOGGED_BY_PARENT"
 
@@ -282,7 +282,7 @@ def _run_tracked_extraction(command, dwi, context, image, session_log):
         return False
     else:
         try:
-            tracker = start_output_tracking(dwi, "dwi", "processing")
+            tracker = start_output_tracking(dwi, "dwi", "extraction")
         except (OSError, ValueError) as error:
             print(f"Error: [{context}] Cannot start manifest tracking for '{image.name}': {error}", file=sys.stderr)
             return False
@@ -308,7 +308,7 @@ def _run_tracked_extraction(command, dwi, context, image, session_log):
             try:
                 tracker.finalize()
             except (OSError, ValueError) as error:
-                print(f"Error: [{context}] Cannot finalize processing manifest for '{image.name}': {error}",
+                print(f"Error: [{context}] Cannot finalize extraction manifest for '{image.name}': {error}",
                       file=sys.stderr)
                 succeeded = False
     return succeeded
