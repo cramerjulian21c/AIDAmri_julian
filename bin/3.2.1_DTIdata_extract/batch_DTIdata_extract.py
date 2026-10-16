@@ -10,6 +10,9 @@ Forward an optional -t translation table without choosing one automatically.
 The extractor creates individual CSV files beside the parameter maps.
 Optionally pass -o/--output NAME.csv (requires -t) to collect successful
 exports from this run into PROC_FOLDER/NAME_<metric>.csv, one per metric.
+With -g/--group CSV (requires -o), insert a group column after session.
+Group CSV headers name the groups; cells below contain subject folder names.
+Ignore empty cells, match subjects exactly and leave missing groups empty.
 Rows contain subject, session and median values in acronym columns ordered
 as first encountered in the individual CSVs; append newly encountered
 acronyms at the end. Missing regions are empty cells. Multiple images of one metric
@@ -35,7 +38,7 @@ Continue after individual failures. Exit with status 1 if any extraction
 or session fails, or no extraction succeeds; otherwise exit with status 0.
 
 Usage:
-    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o NAME.csv]
+    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o NAME.csv] [-g GROUPS.csv]
 
 Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
@@ -133,7 +136,40 @@ def _cohort_output_stem(name):
     return stem
 
 
-def _read_region_values(path):
+def _read_groups(path):
+    """Map subject folder names to the group named by their CSV column header."""
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        preview = stream.read(8192)
+        stream.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(preview, delimiters=",;\t")
+        except csv.Error:
+            # Unequal group sizes can make sniffing the full CSV inconclusive.
+            try:
+                dialect = csv.Sniffer().sniff(preview.splitlines()[0] if preview else "", delimiters=",;\t")
+            except csv.Error:
+                dialect = csv.excel
+        reader = csv.reader(stream, dialect, strict=True)
+        headers = [value.strip() for value in next(reader, [])]
+        if not headers or any(not value for value in headers):
+            raise ValueError("Group CSV must start with nonempty group column names.")
+        if len(headers) != len(set(headers)):
+            raise ValueError("Group CSV has duplicate group column names.")
+        groups = {}
+        for row in reader:
+            if len(row) > len(headers):
+                raise ValueError(f"Group CSV line {reader.line_num} has too many columns.")
+            for group, subject in zip(headers, row):
+                subject = subject.strip()
+                if not subject:
+                    continue
+                if subject in groups:
+                    raise ValueError(f"Subject '{subject}' occurs more than once in the group CSV.")
+                groups[subject] = group
+    return groups
+
+
+def _read_region_values(path, include_group=False):
     """Validate an extractor CSV, retaining the original median text."""
     values = {}
     roi_ids = set()
@@ -146,7 +182,7 @@ def _read_region_values(path):
                 raise ValueError(f"Expected three columns at CSV line {reader.line_num}.")
             roi_id = int(row[0])
             acronym, median = row[1:]
-            if not acronym.strip() or acronym in {"subject", "session"}:
+            if not acronym.strip() or acronym in {"subject", "session"} or (include_group and acronym == "group"):
                 raise ValueError(f"Empty or reserved acronym '{acronym}' at CSV line {reader.line_num}.")
             if acronym in values or roi_id in roi_ids:
                 raise ValueError(f"Ambiguous acronym or ROI ID at CSV line {reader.line_num}: '{acronym}', {roi_id}.")
@@ -157,7 +193,7 @@ def _read_region_values(path):
     return values
 
 
-def _write_cohort_csv(path, rows):
+def _write_cohort_csv(path, rows, groups=None):
     """Replace one cohort table only after the entire new CSV has been written."""
     acronyms = list(dict.fromkeys(
         acronym
@@ -177,9 +213,15 @@ def _write_cohort_csv(path, rows):
             break
         with stream:
             writer = csv.writer(stream)
-            writer.writerow(["subject", "session", *acronyms])
+            metadata = ["subject", "session"]
+            if groups is not None:
+                metadata.append("group")
+            writer.writerow([*metadata, *acronyms])
             for (subject, session), values in sorted(rows.items()):
-                writer.writerow([subject, session, *(values.get(acronym, "") for acronym in acronyms)])
+                identifiers = [subject, session]
+                if groups is not None:
+                    identifiers.append(groups.get(subject, ""))
+                writer.writerow([*identifiers, *(values.get(acronym, "") for acronym in acronyms)])
         os.replace(temporary, path)
     finally:
         if temporary is not None:
@@ -189,7 +231,7 @@ def _write_cohort_csv(path, rows):
                 print(f"Warning: Cannot remove temporary cohort CSV '{temporary}': {error}", file=sys.stderr)
 
 
-def _write_cohort_tables(root, stem, cohort_rows):
+def _write_cohort_tables(root, stem, cohort_rows, groups=None):
     written = []
     failed = 0
     for metric, rows in cohort_rows.items():
@@ -199,7 +241,7 @@ def _write_cohort_tables(root, stem, cohort_rows):
                   "No cohort CSV written; any existing file is unchanged.", file=sys.stderr)
             continue
         try:
-            _write_cohort_csv(path, rows)
+            _write_cohort_csv(path, rows, groups)
         except (OSError, ValueError, csv.Error) as error:
             print(f"Error: Cannot write cohort CSV '{path}': {error}", file=sys.stderr)
             failed += 1
@@ -286,7 +328,8 @@ def _append_session_git_information(dwi, context):
     return True
 
 
-def _run_session(dwi, context, roi_name, metric_selection, translator, extractor, cohort_rows=None):
+def _run_session(dwi, context, roi_name, metric_selection, translator, extractor, cohort_rows=None,
+                 include_group=False):
     succeeded = skipped = failed = 0
     missing_metrics = []
     try:
@@ -348,7 +391,7 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
                     if cohort_rows is not None and metric not in ambiguous_metrics:
                         csv_path = Path(getOutfile(rois[0], image))
                         try:
-                            values = _read_region_values(csv_path)
+                            values = _read_region_values(csv_path, include_group=include_group)
                         except (OSError, ValueError, csv.Error) as error:
                             print(f"Error: [{context}] Cannot collect '{csv_path}' for the cohort CSV: {error}",
                                   file=sys.stderr)
@@ -384,16 +427,21 @@ def main(argv=None):
                         help="Metric suffix before .nii[.gz] (default: all; includes legacy .fa0 maps)")
     parser.add_argument("-o", "--output", metavar="NAME.csv",
                         help="Collect current successful exports into PROC_FOLDER/NAME_<metric>.csv; requires -t")
+    parser.add_argument("-g", "--group", metavar="CSV",
+                        help="Group CSV: headers are group names, cells are subject folder names; requires -o")
     args = parser.parse_args(argv)
 
     root = Path(args.input).expanduser().resolve()
     translator = Path(args.translatorTXT).expanduser().resolve() if args.translatorTXT is not None else None
+    group_file = Path(args.group).expanduser().resolve() if args.group is not None else None
     extractor = Path(__file__).resolve().with_name("DTIdata_extract.py")
     roi_name = args.roi_name.strip()
     if not root.is_dir():
         return _print_summary(0, 0, 1, reason=f"Error: Proc folder does not exist or is not a directory: '{root}'.")
     if not roi_name:
         return _print_summary(0, 0, 1, reason="Error: ROI name must not be empty.")
+    if group_file is not None and args.output is None:
+        return _print_summary(0, 0, 1, reason="Error: --group requires -o/--output for cohort CSVs.")
     output_stem = None
     cohort_rows = None
     if args.output is not None:
@@ -405,9 +453,15 @@ def main(argv=None):
             return _print_summary(0, 0, 1, reason=f"Error: {error}")
         selected = METRICS if args.metric == "all" else (args.metric,)
         cohort_rows = {metric: {} for metric in selected}
-    for path in (extractor, translator):
+    for path in (extractor, translator, group_file):
         if path is not None and not path.is_file():
             return _print_summary(0, 0, 1, reason=f"Error: Required file does not exist: '{path}'.")
+    groups = None
+    if group_file is not None:
+        try:
+            groups = _read_groups(group_file)
+        except (OSError, ValueError, csv.Error) as error:
+            return _print_summary(0, 0, 1, reason=f"Error: Cannot read group CSV '{group_file}': {error}")
 
     succeeded = skipped = failed = 0
     failed_sessions = {}
@@ -422,7 +476,8 @@ def main(argv=None):
     for dwi in sessions:
         context = str(dwi.relative_to(root))
         session = f"{dwi.parent.parent.name} / {dwi.parent.name}"
-        result = _run_session(dwi, context, roi_name, args.metric, translator, extractor, cohort_rows)
+        result = _run_session(dwi, context, roi_name, args.metric, translator, extractor, cohort_rows,
+                              include_group=groups is not None)
         succeeded += result.succeeded
         skipped += result.skipped
         failed += result.failed
@@ -433,7 +488,7 @@ def main(argv=None):
 
     reason = ""
     if cohort_rows is not None:
-        written, write_failures = _write_cohort_tables(root, output_stem, cohort_rows)
+        written, write_failures = _write_cohort_tables(root, output_stem, cohort_rows, groups)
         failed += write_failures
         if written:
             reason = "Cohort CSVs: " + ", ".join(written) + "."
