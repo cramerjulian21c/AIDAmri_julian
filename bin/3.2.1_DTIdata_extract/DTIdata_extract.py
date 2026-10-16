@@ -17,11 +17,14 @@ Validate image dimensions, voxel-grid alignment, integer ROI labels
 and finite image values in exported regions before opening the CSV.
 CLI messages are shown in the terminal and appended to the enclosing
 dwi folder's process log, preserving stdout and stderr separately.
+Use the batchProc.py timestamp format and Europe/Berlin time zone.
 Outside a dwi folder, use a process log beside the image instead.
 For identifiable subject/dwi folders, record created and modified outputs
 in the dwi manifest under stage processing. Otherwise warn and skip tracking.
 When a parent batch owns processing tracking for the same dwi folder,
 keep logging but leave manifest tracking to that parent.
+Append Git information at the end of each standalone run, including failures.
+During batch runs, leave the header and final Git block to the parent once per session.
 
 Usage:
     python DTIdata_extract.py -i IMAGE -r ROIS [-t TRANSLATIONS]
@@ -33,7 +36,6 @@ Modified by J. Cramer 15-10-2026
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import csv
-from datetime import datetime
 import os
 from pathlib import Path
 import sys
@@ -43,15 +45,28 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.artifact_manifest import manifest_filename, start_output_tracking
-from common.script_logging import _TeeStream, build_script_log_path
+from common.script_logging import (
+    _TeeStream, append_git_information, build_script_log_path, format_script_log_header,
+)
 
 PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
+PARENT_GIT_LOG_ENV = "AIDAMRI_DTI_GIT_LOGGED_BY_PARENT"
+PARENT_HEADER_LOG_ENV = "AIDAMRI_DTI_HEADER_LOGGED_BY_PARENT"
 
 
 def _process_log_path(image_file):
     image = Path(image_file).expanduser().resolve()
     folder = next((parent for parent in image.parents if parent.name == "dwi"), image.parent)
     return Path(build_script_log_path(folder, "process.log"))
+
+
+def _parent_owns_log_section(folder, env_name):
+    parent_folder = os.environ.get(env_name, "")
+    try:
+        return bool(parent_folder) and Path(parent_folder).is_absolute() \
+            and Path(parent_folder).resolve() == folder
+    except (OSError, ValueError):
+        return False
 
 
 def _finalize_tracking(tracker):
@@ -210,7 +225,8 @@ def main(argv=None):
                     tracking_error = f"Error: Cannot start processing manifest tracking in '{folder}': {error}"
         with log_path.open("a", encoding="utf-8", buffering=1) as log:
             with redirect_stdout(_TeeStream(sys.stdout, log)), redirect_stderr(_TeeStream(sys.stderr, log)):
-                print(f"\n=== DTIdata_extract.py {datetime.now().astimezone().isoformat(timespec='seconds')} ===")
+                if not _parent_owns_log_section(folder, PARENT_HEADER_LOG_ENV):
+                    print(f"\n{format_script_log_header('DTIdata_extract.py')}")
                 print(f"Image: {Path(args.image_file).expanduser().resolve()}")
                 print(f"ROI: {Path(args.roi_file).expanduser().resolve()}")
                 print(f"Translation: {Path(args.translatorTXT).expanduser().resolve() if args.translatorTXT else 'None'}")
@@ -225,11 +241,21 @@ def main(argv=None):
                     else:
                         status = _run_extraction(args)
                 finally:
-                    if tracker is not None:
-                        log.flush()
-                        finalized = True
-                        if not _finalize_tracking(tracker):
-                            status = 1
+                    try:
+                        if tracker is not None:
+                            log.flush()
+                            finalized = True
+                            if not _finalize_tracking(tracker):
+                                status = 1
+                    finally:
+                        # Include tracking errors before the final Git block.
+                        if not _parent_owns_log_section(folder, PARENT_GIT_LOG_ENV):
+                            try:
+                                append_git_information(log, output_dir=folder)
+                            except (OSError, UnicodeError) as error:
+                                print(f"Error: Cannot append Git information to '{log_path}': {error}",
+                                      file=sys.stderr)
+                                status = 1
                 return status
     except OSError as error:
         print(f"Error: Cannot write process log for '{args.image_file}': {error}", file=sys.stderr)

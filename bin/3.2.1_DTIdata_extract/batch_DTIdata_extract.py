@@ -13,6 +13,11 @@ Track dwi/processing outputs around each extractor invocation and finalize
 even after child-process failure. Pass the tracked folder only to that child
 so the extractor does not start a second tracker for the same folder.
 Suppress normal extractor output such as Done messages during batch runs.
+Write one extractor header per session and batch invocation before the first
+metric, inside processing tracking; suppress the headers in all children.
+Suppress the child's Git block and append Git information once per attempted
+session to its existing process log after all metrics, including failures.
+Fully skipped sessions do not receive a Git block.
 List failed and fully or partially skipped sessions in the final summary.
 The skipped counter counts skipped entries, which may be whole sessions
 or individual missing metrics, rather than unique skipped sessions.
@@ -26,6 +31,7 @@ Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
 
 import argparse
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import subprocess
@@ -34,10 +40,31 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.artifact_manifest import manifest_filename, start_output_tracking
+from common.script_logging import append_git_information, build_script_log_path, format_script_log_header
 
 
 METRICS = ("fa", "md", "rd", "ad")
 PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
+PARENT_GIT_LOG_ENV = "AIDAMRI_DTI_GIT_LOGGED_BY_PARENT"
+PARENT_HEADER_LOG_ENV = "AIDAMRI_DTI_HEADER_LOGGED_BY_PARENT"
+
+
+@dataclass
+class _SessionLog:
+    path: Path
+    header_written: bool = False
+
+    def write_header(self, context):
+        if self.header_written:
+            return True
+        try:
+            with self.path.open("a", encoding="utf-8") as log:
+                log.write(f"\n{format_script_log_header('DTIdata_extract.py')}\n")
+        except (OSError, UnicodeError) as error:
+            print(f"Error: [{context}] Cannot write session header to '{self.path}': {error}", file=sys.stderr)
+            return False
+        self.header_written = True
+        return True
 
 
 class SessionResult(NamedTuple):
@@ -96,8 +123,11 @@ def _print_summary(succeeded, skipped, failed, failed_sessions=None, reason="", 
     return 1 if failed or not succeeded else 0
 
 
-def _run_tracked_extraction(command, dwi, context, image):
+def _run_tracked_extraction(command, dwi, context, image, session_log):
     child_env = os.environ.copy()
+    # Git logging belongs to the batch even without a recognizable BIDS manifest.
+    child_env[PARENT_GIT_LOG_ENV] = str(dwi.resolve())
+    child_env[PARENT_HEADER_LOG_ENV] = str(dwi.resolve())
     # An inherited marker must not suppress tracking without a matching owner.
     child_env.pop(PARENT_TRACKING_ENV, None)
     tracker = None
@@ -119,6 +149,9 @@ def _run_tracked_extraction(command, dwi, context, image):
 
     succeeded = False
     try:
+        # Snapshot first so a log created by the batch is tracked as a new output.
+        if not session_log.write_header(context):
+            return False
         # The extractor owns its log. Keep stderr visible and suppress normal stdout.
         result = subprocess.run(command, cwd=dwi, check=False, stdout=subprocess.DEVNULL,
                                 stderr=None, env=child_env)
@@ -138,6 +171,20 @@ def _run_tracked_extraction(command, dwi, context, image):
                       file=sys.stderr)
                 succeeded = False
     return succeeded
+
+
+def _append_session_git_information(dwi, context):
+    log_path = Path(build_script_log_path(dwi, "process.log"))
+    try:
+        # Append only to an existing session log.
+        if not log_path.exists():
+            return True
+        with log_path.open("a", encoding="utf-8") as log:
+            append_git_information(log, output_dir=dwi)
+    except (OSError, UnicodeError) as error:
+        print(f"Error: [{context}] Cannot append Git information to '{log_path}': {error}", file=sys.stderr)
+        return False
+    return True
 
 
 def _run_session(dwi, context, roi_name, metric_selection, translator, extractor):
@@ -175,21 +222,26 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
             collisions.update(images)
             failed += len(images)
 
-    for metric, images in metrics.items():
-        if not images:
-            print(f"Warning: [{context}] No {metric.upper()} map found. Skipping parameter.", file=sys.stderr)
-            skipped += 1
-            missing_metrics.append(metric.upper())
-        for image in images:
-            if image in collisions:
-                continue
-            command = [sys.executable, str(extractor), "-i", str(image), "-r", str(rois[0])]
-            if translator is not None:
-                command.extend(("-t", str(translator)))
-            if _run_tracked_extraction(command, dwi, context, image):
-                succeeded += 1
-            else:
-                failed += 1
+    session_log = _SessionLog(Path(build_script_log_path(dwi, "process.log")))
+    try:
+        for metric, images in metrics.items():
+            if not images:
+                print(f"Warning: [{context}] No {metric.upper()} map found. Skipping parameter.", file=sys.stderr)
+                skipped += 1
+                missing_metrics.append(metric.upper())
+            for image in images:
+                if image in collisions:
+                    continue
+                command = [sys.executable, str(extractor), "-i", str(image), "-r", str(rois[0])]
+                if translator is not None:
+                    command.extend(("-t", str(translator)))
+                if _run_tracked_extraction(command, dwi, context, image, session_log):
+                    succeeded += 1
+                else:
+                    failed += 1
+    finally:
+        if session_log.header_written and not _append_session_git_information(dwi, context):
+            failed += 1
     skip_reason = ""
     if missing_metrics:
         status = "fully" if succeeded == 0 and failed == 0 else "partially"
