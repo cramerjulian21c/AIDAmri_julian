@@ -15,6 +15,9 @@ table, leave the acronym column empty.
 
 Validate image dimensions, voxel-grid alignment, integer ROI labels
 and finite image values in exported regions before opening the CSV.
+CLI messages are shown in the terminal and appended to the enclosing
+dwi folder's process log, preserving stdout and stderr separately.
+Outside a dwi folder, use a process log beside the image instead.
 
 Usage:
     python DTIdata_extract.py -i IMAGE -r ROIS [-t TRANSLATIONS]
@@ -24,12 +27,24 @@ Modified by J. Cramer 15-10-2026
 """
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
 import csv
+from datetime import datetime
 import os
+from pathlib import Path
 import sys
 
 import nibabel as nii
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common.script_logging import _TeeStream, build_script_log_path
+
+
+def _process_log_path(image_file):
+    image = Path(image_file).expanduser().resolve()
+    folder = next((parent for parent in image.parents if parent.name == "dwi"), image.parent)
+    return Path(build_script_log_path(folder, "process.log"))
 
 
 def _nifti_stem(path):
@@ -148,6 +163,21 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    try:
+        log_path = _process_log_path(args.image_file)
+        with log_path.open("a", encoding="utf-8", buffering=1) as log:
+            with redirect_stdout(_TeeStream(sys.stdout, log)), redirect_stderr(_TeeStream(sys.stderr, log)):
+                print(f"\n=== DTIdata_extract.py {datetime.now().astimezone().isoformat(timespec='seconds')} ===")
+                print(f"Image: {Path(args.image_file).expanduser().resolve()}")
+                print(f"ROI: {Path(args.roi_file).expanduser().resolve()}")
+                print(f"Translation: {Path(args.translatorTXT).expanduser().resolve() if args.translatorTXT else 'None'}")
+                return _run_extraction(args)
+    except OSError as error:
+        print(f"Error: Cannot write process log for '{args.image_file}': {error}", file=sys.stderr)
+        return 1
+
+
+def _run_extraction(args):
     try:
         outfile = getOutfile(args.roi_file, args.image_file)
         image_data = nii.load(args.image_file)
