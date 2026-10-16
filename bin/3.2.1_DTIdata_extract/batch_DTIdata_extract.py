@@ -416,7 +416,8 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description="Batch script controlling DTIdata_extract.py across subject/session/dwi folders."
+                                                 "Summarized infos in cohort csvs.")
     parser.add_argument("-i", "--input", required=True,
                         help="Cohort root containing subject/session/dwi folders")
     parser.add_argument("-r", "--roi_name", required=True,
