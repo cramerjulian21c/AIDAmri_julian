@@ -9,6 +9,9 @@ Forward an optional -t translation table without choosing one automatically.
 
 The extractor creates individual CSV files beside the parameter maps.
 Show warnings and errors in the terminal; the extractor writes its own log.
+Track dwi/processing outputs around each extractor invocation and finalize
+even after child-process failure. Pass the tracked folder only to that child
+so the extractor does not start a second tracker for the same folder.
 Suppress normal extractor output such as Done messages during batch runs.
 List failed and fully or partially skipped sessions in the final summary.
 The skipped counter counts skipped entries, which may be whole sessions
@@ -23,13 +26,18 @@ Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
 from typing import NamedTuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common.artifact_manifest import manifest_filename, start_output_tracking
+
 
 METRICS = ("fa", "md", "rd", "ad")
+PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
 
 
 class SessionResult(NamedTuple):
@@ -88,6 +96,50 @@ def _print_summary(succeeded, skipped, failed, failed_sessions=None, reason="", 
     return 1 if failed or not succeeded else 0
 
 
+def _run_tracked_extraction(command, dwi, context, image):
+    child_env = os.environ.copy()
+    # An inherited marker must not suppress tracking without a matching owner.
+    child_env.pop(PARENT_TRACKING_ENV, None)
+    tracker = None
+    try:
+        manifest_filename(dwi, "dwi")
+    except ValueError:
+        # Keep support for arbitrary folder names; the extractor warns as before.
+        pass
+    except OSError as error:
+        print(f"Error: [{context}] Cannot start manifest tracking for '{image.name}': {error}", file=sys.stderr)
+        return False
+    else:
+        try:
+            tracker = start_output_tracking(dwi, "dwi", "processing")
+        except (OSError, ValueError) as error:
+            print(f"Error: [{context}] Cannot start manifest tracking for '{image.name}': {error}", file=sys.stderr)
+            return False
+        child_env[PARENT_TRACKING_ENV] = str(dwi.resolve())
+
+    succeeded = False
+    try:
+        # The extractor owns its log. Keep stderr visible and suppress normal stdout.
+        result = subprocess.run(command, cwd=dwi, check=False, stdout=subprocess.DEVNULL,
+                                stderr=None, env=child_env)
+        if result.returncode != 0:
+            print(f"Error: [{context}] Extraction failed for '{image.name}' "
+                  f"(exit code {result.returncode}).", file=sys.stderr)
+        else:
+            succeeded = True
+    except OSError as error:
+        print(f"Error: [{context}] Could not run extractor for '{image.name}': {error}", file=sys.stderr)
+    finally:
+        if tracker is not None:
+            try:
+                tracker.finalize()
+            except (OSError, ValueError) as error:
+                print(f"Error: [{context}] Cannot finalize processing manifest for '{image.name}': {error}",
+                      file=sys.stderr)
+                succeeded = False
+    return succeeded
+
+
 def _run_session(dwi, context, roi_name, metric_selection, translator, extractor):
     succeeded = skipped = failed = 0
     missing_metrics = []
@@ -134,20 +186,10 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
             command = [sys.executable, str(extractor), "-i", str(image), "-r", str(rois[0])]
             if translator is not None:
                 command.extend(("-t", str(translator)))
-            try:
-                # The extractor owns its log. Keep warnings/errors visible while
-                # suppressing its normal stdout only for batch execution.
-                result = subprocess.run(command, cwd=dwi, check=False, stdout=subprocess.DEVNULL, stderr=None)
-            except OSError as error:
-                print(f"Error: [{context}] Could not run extractor for '{image.name}': {error}", file=sys.stderr)
-                failed += 1
-                continue
-            if result.returncode != 0:
-                print(f"Error: [{context}] Extraction failed for '{image.name}' "
-                      f"(exit code {result.returncode}).", file=sys.stderr)
-                failed += 1
-            else:
+            if _run_tracked_extraction(command, dwi, context, image):
                 succeeded += 1
+            else:
+                failed += 1
     skip_reason = ""
     if missing_metrics:
         status = "fully" if succeeded == 0 and failed == 0 else "partially"

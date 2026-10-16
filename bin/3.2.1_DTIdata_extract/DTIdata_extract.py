@@ -18,6 +18,10 @@ and finite image values in exported regions before opening the CSV.
 CLI messages are shown in the terminal and appended to the enclosing
 dwi folder's process log, preserving stdout and stderr separately.
 Outside a dwi folder, use a process log beside the image instead.
+For identifiable subject/dwi folders, record created and modified outputs
+in the dwi manifest under stage processing. Otherwise warn and skip tracking.
+When a parent batch owns processing tracking for the same dwi folder,
+keep logging but leave manifest tracking to that parent.
 
 Usage:
     python DTIdata_extract.py -i IMAGE -r ROIS [-t TRANSLATIONS]
@@ -38,13 +42,25 @@ import nibabel as nii
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common.artifact_manifest import manifest_filename, start_output_tracking
 from common.script_logging import _TeeStream, build_script_log_path
+
+PARENT_TRACKING_ENV = "AIDAMRI_DTI_PROCESSING_TRACKED_BY_PARENT"
 
 
 def _process_log_path(image_file):
     image = Path(image_file).expanduser().resolve()
     folder = next((parent for parent in image.parents if parent.name == "dwi"), image.parent)
     return Path(build_script_log_path(folder, "process.log"))
+
+
+def _finalize_tracking(tracker):
+    try:
+        tracker.finalize()
+    except (OSError, ValueError) as error:
+        print(f"Error: Cannot finalize processing manifest in '{tracker.folder}': {error}", file=sys.stderr)
+        return False
+    return True
 
 
 def _nifti_stem(path):
@@ -163,18 +179,65 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    tracker = None
+    finalized = False
     try:
         log_path = _process_log_path(args.image_file)
+        folder = log_path.parent
+        tracking_warning = ""
+        tracking_error = ""
+        managed_by_parent = False
+        try:
+            if folder.name != "dwi":
+                raise ValueError("No enclosing dwi folder")
+            manifest_filename(folder, "dwi")
+        except ValueError:
+            tracking_warning = (
+                f"Warning: Manifest tracking skipped: no recognizable dwi/subject structure in '{folder}'."
+            )
+        else:
+            parent_folder = os.environ.get(PARENT_TRACKING_ENV, "")
+            try:
+                managed_by_parent = bool(parent_folder) and Path(parent_folder).is_absolute() \
+                    and Path(parent_folder).resolve() == folder
+            except (OSError, ValueError):
+                managed_by_parent = False
+            if not managed_by_parent:
+                try:
+                    # Snapshot before opening the log so a new log is also tracked.
+                    tracker = start_output_tracking(folder, "dwi", "processing")
+                except (OSError, ValueError) as error:
+                    tracking_error = f"Error: Cannot start processing manifest tracking in '{folder}': {error}"
         with log_path.open("a", encoding="utf-8", buffering=1) as log:
             with redirect_stdout(_TeeStream(sys.stdout, log)), redirect_stderr(_TeeStream(sys.stderr, log)):
                 print(f"\n=== DTIdata_extract.py {datetime.now().astimezone().isoformat(timespec='seconds')} ===")
                 print(f"Image: {Path(args.image_file).expanduser().resolve()}")
                 print(f"ROI: {Path(args.roi_file).expanduser().resolve()}")
                 print(f"Translation: {Path(args.translatorTXT).expanduser().resolve() if args.translatorTXT else 'None'}")
-                return _run_extraction(args)
+                if managed_by_parent:
+                    print("Manifest tracking: parent batch")
+                if tracking_warning:
+                    print(tracking_warning, file=sys.stderr)
+                status = 1
+                try:
+                    if tracking_error:
+                        print(tracking_error, file=sys.stderr)
+                    else:
+                        status = _run_extraction(args)
+                finally:
+                    if tracker is not None:
+                        log.flush()
+                        finalized = True
+                        if not _finalize_tracking(tracker):
+                            status = 1
+                return status
     except OSError as error:
         print(f"Error: Cannot write process log for '{args.image_file}': {error}", file=sys.stderr)
         return 1
+    finally:
+        # Also release the tracker's atexit hook if opening/writing the log failed.
+        if tracker is not None and not finalized:
+            _finalize_tracking(tracker)
 
 
 def _run_extraction(args):
