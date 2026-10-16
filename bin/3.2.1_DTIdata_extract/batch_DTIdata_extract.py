@@ -8,6 +8,16 @@ selection, all, processes all four metrics and legacy .fa0 maps.
 Forward an optional -t translation table without choosing one automatically.
 
 The extractor creates individual CSV files beside the parameter maps.
+Optionally pass -o/--output NAME.csv (requires -t) to collect successful
+exports from this run into PROC_FOLDER/NAME_<metric>.csv, one per metric.
+Rows contain subject, session and median values in acronym columns ordered
+as first encountered in the individual CSVs; append newly encountered
+acronyms at the end. Missing regions are empty cells. Multiple images of one metric
+in a session are ambiguous: report an error and omit that cohort row while
+still running individual extractions. FA and legacy FA0 count as one metric.
+Replace cohort tables atomically; leave existing tables unchanged with a
+warning when no valid rows are available for a metric.
+Cohort CSVs use normal new-file permissions, respecting umask and inherited permissions.
 Show warnings and errors in the terminal; the extractor writes its own log.
 Track dwi/processing outputs around each extractor invocation and finalize
 even after child-process failure. Pass the tracked folder only to that child
@@ -25,21 +35,25 @@ Continue after individual failures. Exit with status 1 if any extraction
 or session fails, or no extraction succeeds; otherwise exit with status 0.
 
 Usage:
-    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa]
+    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o NAME.csv]
 
 Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
 
 import argparse
+import csv
 from dataclasses import dataclass
+import math
 import os
 from pathlib import Path
 import subprocess
 import sys
 from typing import NamedTuple
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.artifact_manifest import manifest_filename, start_output_tracking
+from common.dti_csv import getOutfile
 from common.script_logging import append_git_information, build_script_log_path, format_script_log_header
 
 
@@ -107,6 +121,91 @@ def _find_metrics(folder, selected_metric="all"):
         if metric in metrics:
             metrics[metric].append(path)
     return metrics
+
+
+def _cohort_output_stem(name):
+    name = name.strip()
+    if not name or name in {".", ".."} or any(char in name for char in ("/", "\\", "\0")):
+        raise ValueError("--output must be a filename without a directory; cohort CSVs are saved in the proc folder.")
+    stem = name[:-4] if name.lower().endswith(".csv") else name
+    if not stem.strip():
+        raise ValueError("--output must contain a filename before the .csv extension.")
+    return stem
+
+
+def _read_region_values(path):
+    """Validate an extractor CSV, retaining the original median text."""
+    values = {}
+    roi_ids = set()
+    with path.open(encoding="utf-8", newline="") as stream:
+        reader = csv.reader(stream, strict=True)
+        if next(reader, None) != ["roi_id", "acronym", "median"]:
+            raise ValueError("Expected CSV columns roi_id,acronym,median.")
+        for row in reader:
+            if len(row) != 3:
+                raise ValueError(f"Expected three columns at CSV line {reader.line_num}.")
+            roi_id = int(row[0])
+            acronym, median = row[1:]
+            if not acronym.strip() or acronym in {"subject", "session"}:
+                raise ValueError(f"Empty or reserved acronym '{acronym}' at CSV line {reader.line_num}.")
+            if acronym in values or roi_id in roi_ids:
+                raise ValueError(f"Ambiguous acronym or ROI ID at CSV line {reader.line_num}: '{acronym}', {roi_id}.")
+            if not math.isfinite(float(median)):
+                raise ValueError(f"Nonfinite median for '{acronym}' at CSV line {reader.line_num}.")
+            roi_ids.add(roi_id)
+            values[acronym] = median
+    return values
+
+
+def _write_cohort_csv(path, rows):
+    """Replace one cohort table only after the entire new CSV has been written."""
+    acronyms = list(dict.fromkeys(
+        acronym
+        for values in rows.values()
+        for acronym in values
+    ))
+    temporary = None
+    try:
+        # Exclusive creation respects umask and inherited permissions.
+        while True:
+            candidate = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+            try:
+                stream = candidate.open("x", encoding="utf-8", newline="")
+            except FileExistsError:
+                continue
+            temporary = candidate
+            break
+        with stream:
+            writer = csv.writer(stream)
+            writer.writerow(["subject", "session", *acronyms])
+            for (subject, session), values in sorted(rows.items()):
+                writer.writerow([subject, session, *(values.get(acronym, "") for acronym in acronyms)])
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as error:
+                print(f"Warning: Cannot remove temporary cohort CSV '{temporary}': {error}", file=sys.stderr)
+
+
+def _write_cohort_tables(root, stem, cohort_rows):
+    written = []
+    failed = 0
+    for metric, rows in cohort_rows.items():
+        path = root / f"{stem}_{metric}.csv"
+        if not rows:
+            print(f"Warning: No valid {metric.upper()} rows for '{path}'. "
+                  "No cohort CSV written; any existing file is unchanged.", file=sys.stderr)
+            continue
+        try:
+            _write_cohort_csv(path, rows)
+        except (OSError, ValueError, csv.Error) as error:
+            print(f"Error: Cannot write cohort CSV '{path}': {error}", file=sys.stderr)
+            failed += 1
+        else:
+            written.append(path.name)
+    return written, failed
 
 
 def _print_summary(succeeded, skipped, failed, failed_sessions=None, reason="", skipped_sessions=None):
@@ -187,7 +286,7 @@ def _append_session_git_information(dwi, context):
     return True
 
 
-def _run_session(dwi, context, roi_name, metric_selection, translator, extractor):
+def _run_session(dwi, context, roi_name, metric_selection, translator, extractor, cohort_rows=None):
     succeeded = skipped = failed = 0
     missing_metrics = []
     try:
@@ -222,6 +321,15 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
             collisions.update(images)
             failed += len(images)
 
+    ambiguous_metrics = set()
+    if cohort_rows is not None:
+        for metric, images in metrics.items():
+            if len(images) > 1:
+                ambiguous_metrics.add(metric)
+                print(f"Error: [{context}] Multiple {metric.upper()} images: {', '.join(p.name for p in images)}. "
+                      "Omitting this subject/session/metric from the cohort CSV.", file=sys.stderr)
+                failed += 1
+
     session_log = _SessionLog(Path(build_script_log_path(dwi, "process.log")))
     try:
         for metric, images in metrics.items():
@@ -237,6 +345,21 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
                     command.extend(("-t", str(translator)))
                 if _run_tracked_extraction(command, dwi, context, image, session_log):
                     succeeded += 1
+                    if cohort_rows is not None and metric not in ambiguous_metrics:
+                        csv_path = Path(getOutfile(rois[0], image))
+                        try:
+                            values = _read_region_values(csv_path)
+                        except (OSError, ValueError, csv.Error) as error:
+                            print(f"Error: [{context}] Cannot collect '{csv_path}' for the cohort CSV: {error}",
+                                  file=sys.stderr)
+                            failed += 1
+                        else:
+                            if values:
+                                key = (dwi.parent.parent.name, dwi.parent.name)
+                                cohort_rows[metric][key] = values
+                            else:
+                                print(f"Warning: [{context}] No region values in '{csv_path}'. "
+                                      "Omitting this cohort row.", file=sys.stderr)
                 else:
                     failed += 1
     finally:
@@ -255,9 +378,12 @@ def main(argv=None):
                         help="Cohort root containing subject/session/dwi folders")
     parser.add_argument("-r", "--roi_name", required=True,
                         help="ROI filename suffix before .nii[.gz], e.g. annosplit or annosplit_parental")
-    parser.add_argument("-t", "--translatorTXT", help="Optional translation TXT passed to DTIdata_extract.py")
+    parser.add_argument("-t", "--translatorTXT",
+                        help="Translation TXT passed to DTIdata_extract.py; required with --output")
     parser.add_argument("-m", "--metric", choices=(*METRICS, "all"), default="all", type=str.lower,
                         help="Metric suffix before .nii[.gz] (default: all; includes legacy .fa0 maps)")
+    parser.add_argument("-o", "--output", metavar="NAME.csv",
+                        help="Collect current successful exports into PROC_FOLDER/NAME_<metric>.csv; requires -t")
     args = parser.parse_args(argv)
 
     root = Path(args.input).expanduser().resolve()
@@ -268,6 +394,17 @@ def main(argv=None):
         return _print_summary(0, 0, 1, reason=f"Error: Proc folder does not exist or is not a directory: '{root}'.")
     if not roi_name:
         return _print_summary(0, 0, 1, reason="Error: ROI name must not be empty.")
+    output_stem = None
+    cohort_rows = None
+    if args.output is not None:
+        if translator is None:
+            return _print_summary(0, 0, 1, reason="Error: --output requires -t/--translatorTXT for acronym columns.")
+        try:
+            output_stem = _cohort_output_stem(args.output)
+        except ValueError as error:
+            return _print_summary(0, 0, 1, reason=f"Error: {error}")
+        selected = METRICS if args.metric == "all" else (args.metric,)
+        cohort_rows = {metric: {} for metric in selected}
     for path in (extractor, translator):
         if path is not None and not path.is_file():
             return _print_summary(0, 0, 1, reason=f"Error: Required file does not exist: '{path}'.")
@@ -285,7 +422,7 @@ def main(argv=None):
     for dwi in sessions:
         context = str(dwi.relative_to(root))
         session = f"{dwi.parent.parent.name} / {dwi.parent.name}"
-        result = _run_session(dwi, context, roi_name, args.metric, translator, extractor)
+        result = _run_session(dwi, context, roi_name, args.metric, translator, extractor, cohort_rows)
         succeeded += result.succeeded
         skipped += result.skipped
         failed += result.failed
@@ -294,7 +431,13 @@ def main(argv=None):
         if result.skip_reason:
             skipped_sessions[session] = result.skip_reason
 
-    return _print_summary(succeeded, skipped, failed, failed_sessions, skipped_sessions=skipped_sessions)
+    reason = ""
+    if cohort_rows is not None:
+        written, write_failures = _write_cohort_tables(root, output_stem, cohort_rows)
+        failed += write_failures
+        if written:
+            reason = "Cohort CSVs: " + ", ".join(written) + "."
+    return _print_summary(succeeded, skipped, failed, failed_sessions, reason=reason, skipped_sessions=skipped_sessions)
 
 
 if __name__ == "__main__":

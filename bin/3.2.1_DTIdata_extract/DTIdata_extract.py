@@ -45,6 +45,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.artifact_manifest import manifest_filename, start_output_tracking
+from common.dti_csv import getOutfile, nifti_stem as _nifti_stem
 from common.script_logging import (
     _TeeStream, append_git_information, build_script_log_path, format_script_log_header,
 )
@@ -76,26 +77,6 @@ def _finalize_tracking(tracker):
         print(f"Error: Cannot finalize processing manifest in '{tracker.folder}': {error}", file=sys.stderr)
         return False
     return True
-
-
-def _nifti_stem(path):
-    name = os.path.basename(path)
-    for suffix in (".nii.gz", ".nii"):
-        if name.lower().endswith(suffix):
-            return name[:-len(suffix)]
-    raise ValueError(f"Expected a .nii or .nii.gz file: '{path}'.")
-
-
-def getOutfile(roi_file, img_file):
-    """Keep the image basename and append the ROI atlas marker."""
-    image_stem = _nifti_stem(img_file)
-    roi_stem = _nifti_stem(roi_file)
-    atlas = roi_stem
-    for marker in ("AnnoSplit_parental", "Anno_parental", "AnnoSplit", "Anno"):
-        if marker.lower() in roi_stem.lower():
-            atlas = marker
-            break
-    return os.path.join(os.path.dirname(img_file), f"{image_stem}_{atlas}.csv")
 
 
 def _split_mapping(mapping, txt_file):
