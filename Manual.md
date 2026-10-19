@@ -741,7 +741,7 @@ Region-wise diffusion values can be extracted from a DSI Studio metric map and a
 python DTIdata_extract.py .../dwi/DSI_studio/<metric>.nii.gz .../dwi/<roi_file>.nii.gz
 ```
 
-Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `iterativeRun.py` helper.
+Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `batch_DTIdata_extract.py`.
 
 <h3 id="preprocessing-of-fmri-data">Preprocessing of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
