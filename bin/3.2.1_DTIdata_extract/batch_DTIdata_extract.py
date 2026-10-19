@@ -8,8 +8,11 @@ selection, all, processes all four metrics and legacy .fa0 maps.
 Forward an optional -t translation table without choosing one automatically.
 
 The extractor creates individual CSV files beside the parameter maps.
-Optionally pass -o/--output NAME.csv (requires -t) to collect successful
-exports from this run into PROC_FOLDER/NAME_<metric>.csv, one per metric.
+Optionally pass -o/--output /OUTPUT/PATH/NAME (requires -t) to collect successful
+exports from this run into /OUTPUT/PATH/NAME_<metric>.csv, one per metric.
+An optional trailing .csv is removed before adding the metric suffix.
+Relative output paths use the invocation's working directory; ~ is expanded.
+Missing output directories are created automatically.
 With -g/--group CSV (requires -o), insert a group column after session.
 Group CSV headers name the groups; cells below contain subject folder names.
 Ignore empty cells, match subjects exactly and leave missing groups empty.
@@ -38,7 +41,7 @@ Continue after individual failures. Exit with status 1 if any extraction
 or session fails, or no extraction succeeds; otherwise exit with status 0.
 
 Usage:
-    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o NAME.csv] [-g GROUPS.csv]
+    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o /OUTPUT/PATH/NAME] [-g GROUPS.csv]
 
 Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
@@ -126,14 +129,18 @@ def _find_metrics(folder, selected_metric="all"):
     return metrics
 
 
-def _cohort_output_stem(name):
+def _cohort_output_base(name):
+    """Return an absolute output base path without an optional CSV extension."""
     name = name.strip()
-    if not name or name in {".", ".."} or any(char in name for char in ("/", "\\", "\0")):
-        raise ValueError("--output must be a filename without a directory; cohort CSVs are saved in the proc folder.")
-    stem = name[:-4] if name.lower().endswith(".csv") else name
+    if not name or "\0" in name or name.endswith(os.sep) or name.rsplit(os.sep, 1)[-1] in {".", ".."}:
+        raise ValueError("--output must contain an output base filename, optionally preceded by a directory.")
+    path = Path(name).expanduser()
+    if path.is_dir():
+        raise ValueError(f"--output must include a base filename, not an existing directory: '{path}'.")
+    stem = path.name[:-4] if path.name.lower().endswith(".csv") else path.name
     if not stem.strip():
         raise ValueError("--output must contain a filename before the .csv extension.")
-    return stem
+    return path.with_name(stem).resolve()
 
 
 def _read_groups(path):
@@ -231,11 +238,11 @@ def _write_cohort_csv(path, rows, groups=None):
                 print(f"Warning: Cannot remove temporary cohort CSV '{temporary}': {error}", file=sys.stderr)
 
 
-def _write_cohort_tables(root, stem, cohort_rows, groups=None):
+def _write_cohort_tables(output_base, cohort_rows, groups=None):
     written = []
     failed = 0
     for metric, rows in cohort_rows.items():
-        path = root / f"{stem}_{metric}.csv"
+        path = output_base.with_name(f"{output_base.name}_{metric}.csv")
         if not rows:
             print(f"Warning: No valid {metric.upper()} rows for '{path}'. "
                   "No cohort CSV written; any existing file is unchanged.", file=sys.stderr)
@@ -246,7 +253,7 @@ def _write_cohort_tables(root, stem, cohort_rows, groups=None):
             print(f"Error: Cannot write cohort CSV '{path}': {error}", file=sys.stderr)
             failed += 1
         else:
-            written.append(path.name)
+            written.append(str(path))
     return written, failed
 
 
@@ -426,8 +433,9 @@ def main(argv=None):
                         help="Translation TXT passed to DTIdata_extract.py; required with --output")
     parser.add_argument("-m", "--metric", choices=(*METRICS, "all"), default="all", type=str.lower,
                         help="Metric suffix before .nii[.gz] (default: all; includes legacy .fa0 maps)")
-    parser.add_argument("-o", "--output", metavar="NAME.csv",
-                        help="Collect current successful exports into PROC_FOLDER/NAME_<metric>.csv; requires -t")
+    parser.add_argument("-o", "--output", metavar="PATH/NAME",
+                        help="Output base path: write PATH/NAME_<metric>.csv; "
+                             "requires -t")
     parser.add_argument("-g", "--group", metavar="CSV",
                         help="Group CSV: headers are group names, cells are subject folder names; requires -o")
     args = parser.parse_args(argv)
@@ -443,14 +451,14 @@ def main(argv=None):
         return _print_summary(0, 0, 1, reason="Error: ROI name must not be empty.")
     if group_file is not None and args.output is None:
         return _print_summary(0, 0, 1, reason="Error: --group requires -o/--output for cohort CSVs.")
-    output_stem = None
+    output_base = None
     cohort_rows = None
     if args.output is not None:
         if translator is None:
             return _print_summary(0, 0, 1, reason="Error: --output requires -t/--translatorTXT for acronym columns.")
         try:
-            output_stem = _cohort_output_stem(args.output)
-        except ValueError as error:
+            output_base = _cohort_output_base(args.output)
+        except (OSError, ValueError, RuntimeError) as error:
             return _print_summary(0, 0, 1, reason=f"Error: {error}")
         selected = METRICS if args.metric == "all" else (args.metric,)
         cohort_rows = {metric: {} for metric in selected}
@@ -474,6 +482,16 @@ def main(argv=None):
     if not sessions:
         return _print_summary(0, 0, 0, reason=f"No subject/session/dwi folders found in '{root}'.")
 
+    if output_base is not None:
+        try:
+            for metric in cohort_rows:
+                path = output_base.with_name(f"{output_base.name}_{metric}.csv")
+                if path.is_dir():
+                    raise ValueError(f"Cohort CSV target is a directory: '{path}'.")
+            output_base.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, ValueError) as error:
+            return _print_summary(0, 0, 1, reason=f"Error: Cannot prepare cohort output '{output_base}': {error}")
+
     for dwi in sessions:
         context = str(dwi.relative_to(root))
         session = f"{dwi.parent.parent.name} / {dwi.parent.name}"
@@ -489,7 +507,7 @@ def main(argv=None):
 
     reason = ""
     if cohort_rows is not None:
-        written, write_failures = _write_cohort_tables(root, output_stem, cohort_rows, groups)
+        written, write_failures = _write_cohort_tables(output_base, cohort_rows, groups)
         failed += write_failures
         if written:
             reason = "Cohort CSVs: " + ", ".join(written) + "."
