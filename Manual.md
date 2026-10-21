@@ -738,10 +738,26 @@ python plotDTI_mat.py -i .../dwi/connectivity/*.connectivity.mat
 Region-wise diffusion values can be extracted from a DSI Studio metric map and a registered atlas ROI image using:
 
 ```text
-python DTIdata_extract.py .../dwi/DSI_studio/<metric>.nii.gz .../dwi/<roi_file>.nii.gz
+python DTIdata_extract.py -i .../dwi/DSI_studio/<metric>.nii.gz -r .../dwi/<roi_file>.nii.gz
 ```
 
 Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `batch_DTIdata_extract.py`.
+
+```text
+python DTIdata_extract.py -i .../dwi/DSI_studio/<metric>.nii.gz -r .../dwi/<roi_file>.nii.gz --exclude-stroke-mask .../dwi/<stroke_mask>.nii.gz
+```
+
+The stroke mask must be a binary 3D NIfTI image containing only 0 and 1, with the same shape and voxel-grid affine as the metric image. Voxels marked 1 are excluded before calculating each ROI median; the input images remain unchanged. A fully excluded ROI retains its CSV row with an empty median cell and a warning in the process log. With this option, the CSV name gains `_exclude-stroke` before `.csv`, for example `<metric>_AnnoSplit_exclude-stroke.csv`, so it can coexist with the regular export. Successful repeated runs replace the CSV for the same variant. The resolved mask path is recorded in the process log.
+
+For batch extraction, use `--exclude-stroke-mask` as a switch without a path:
+
+```text
+python batch_DTIdata_extract.py -i /path/to/proc_folder -r annosplit_parental -t /path/to/translations.txt -o /path/to/cohort --exclude-stroke-mask
+```
+
+The batch searches only directly inside each session's `dwi` folder for files ending in `Stroke_mask.nii` or `Stroke_mask.nii.gz`, ignoring case. It does not search subfolders or match files such as `Stroke_mask_anno.nii.gz`. A unique match is passed to each extraction in that session. If no mask exists, the batch warns once in the terminal with the subject/session and calculates normal medians without passing a mask argument; those individual CSVs retain their regular names. Multiple matches or a directory read error abort the entire batch before any extraction starts. Without the switch, no mask search is performed.
+
+With `-o`, the batch reads the individual CSV variant produced for each session and retains empty median cells for fully excluded ROIs. The cohort filenames remain unchanged, for example `cohort_fa.csv`, and may contain both sessions with stroke exclusion and sessions without a mask.
 
 <h3 id="preprocessing-of-fmri-data">Preprocessing of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 

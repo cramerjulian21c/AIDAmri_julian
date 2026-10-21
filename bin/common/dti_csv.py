@@ -11,8 +11,8 @@ def nifti_stem(path):
     raise ValueError(f"Expected a .nii or .nii.gz file: '{path}'.")
 
 
-def getOutfile(roi_file, img_file):
-    """Keep the image basename and append the ROI atlas marker."""
+def getOutfile(roi_file, img_file, exclude_stroke=False):
+    """Append the ROI atlas marker and optional stroke-exclusion suffix."""
     image_stem = nifti_stem(img_file)
     roi_stem = nifti_stem(roi_file)
     atlas = roi_stem
@@ -20,4 +20,5 @@ def getOutfile(roi_file, img_file):
         if marker.lower() in roi_stem.lower():
             atlas = marker
             break
-    return os.path.join(os.path.dirname(img_file), f"{image_stem}_{atlas}.csv")
+    suffix = "_exclude-stroke" if exclude_stroke else ""
+    return os.path.join(os.path.dirname(img_file), f"{image_stem}_{atlas}{suffix}.csv")

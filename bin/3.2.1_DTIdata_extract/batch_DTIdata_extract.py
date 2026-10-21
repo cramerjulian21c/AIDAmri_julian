@@ -7,6 +7,15 @@ in DSI_studio. Select FA, MD, RD or AD with -m/--metric. The default
 selection, all, processes all four metrics and legacy .fa0 maps.
 Forward an optional -t translation table without choosing one automatically.
 
+With --exclude-stroke-mask, search directly in each dwi folder for files ending
+in Stroke_mask.nii or Stroke_mask.nii.gz, ignoring case and excluding subfolders.
+Check all sessions before starting extractions; multiple matching masks or a
+directory read error abort the batch. Forward a unique mask path to the extractor.
+Without a mask, warn once per session and extract normally without the mask option.
+Individual CSVs gain _exclude-stroke only when a mask is used. Cohort filenames
+are unchanged and may combine sessions with and without stroke exclusion.
+Retain fully excluded ROI medians as empty cells in cohort tables.
+
 The extractor creates individual CSV files beside the parameter maps.
 Optionally pass -o/--output /OUTPUT/PATH/NAME (requires -t) to collect successful
 exports from this run into /OUTPUT/PATH/NAME_<metric>.csv, one per metric.
@@ -41,7 +50,7 @@ Continue after individual failures. Exit with status 1 if any extraction
 or session fails, or no extraction succeeds; otherwise exit with status 0.
 
 Usage:
-    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o /OUTPUT/PATH/NAME] [-g GROUPS.csv]
+    python batch_DTIdata_extract.py -i PROC_FOLDER -r annosplit_parental [-t TXT] [-m fa] [-o /OUTPUT/PATH/NAME] [-g GROUPS.csv] [--exclude-stroke-mask]
 
 Created on 08.04.2019 by Niklas Pallast and Markus Aswendt.
 """
@@ -176,7 +185,7 @@ def _read_groups(path):
     return groups
 
 
-def _read_region_values(path, include_group=False):
+def _read_region_values(path, include_group=False, allow_empty_medians=False):
     """Validate an extractor CSV, retaining the original median text."""
     values = {}
     roi_ids = set()
@@ -193,7 +202,7 @@ def _read_region_values(path, include_group=False):
                 raise ValueError(f"Empty or reserved acronym '{acronym}' at CSV line {reader.line_num}.")
             if acronym in values or roi_id in roi_ids:
                 raise ValueError(f"Ambiguous acronym or ROI ID at CSV line {reader.line_num}: '{acronym}', {roi_id}.")
-            if not math.isfinite(float(median)):
+            if not (allow_empty_medians and median == "") and not math.isfinite(float(median)):
                 raise ValueError(f"Nonfinite median for '{acronym}' at CSV line {reader.line_num}.")
             roi_ids.add(roi_id)
             values[acronym] = median
@@ -336,7 +345,7 @@ def _append_session_git_information(dwi, context):
 
 
 def _run_session(dwi, context, roi_name, metric_selection, translator, extractor, cohort_rows=None,
-                 include_group=False):
+                 include_group=False, stroke_mask=None):
     succeeded = skipped = failed = 0
     missing_metrics = []
     try:
@@ -393,12 +402,15 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
                 command = [sys.executable, str(extractor), "-i", str(image), "-r", str(rois[0])]
                 if translator is not None:
                     command.extend(("-t", str(translator)))
+                if stroke_mask is not None:
+                    command.extend(("--exclude-stroke-mask", str(stroke_mask)))
                 if _run_tracked_extraction(command, dwi, context, image, session_log):
                     succeeded += 1
                     if cohort_rows is not None and metric not in ambiguous_metrics:
-                        csv_path = Path(getOutfile(rois[0], image))
+                        csv_path = Path(getOutfile(rois[0], image, exclude_stroke=stroke_mask is not None))
                         try:
-                            values = _read_region_values(csv_path, include_group=include_group)
+                            values = _read_region_values(csv_path, include_group=include_group,
+                                                         allow_empty_medians=stroke_mask is not None)
                         except (OSError, ValueError, csv.Error) as error:
                             print(f"Error: [{context}] Cannot collect '{csv_path}' for the cohort CSV: {error}",
                                   file=sys.stderr)
@@ -438,6 +450,13 @@ def main(argv=None):
                              "requires -t")
     parser.add_argument("-g", "--group", metavar="CSV",
                         help="Group CSV: headers are group names, cells are subject folder names; requires -o")
+    parser.add_argument(
+        "--exclude-stroke-mask", action="store_true",
+        help="Search only directly in each dwi folder for *Stroke_mask.nii or .nii.gz "
+             "(case insensitive). Use a unique mask for ROI medians; warn and extract normally "
+             "if absent. Multiple matches abort the batch before any extraction. "
+             "Cohort CSV filenames are unchanged.",
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.input).expanduser().resolve()
@@ -482,6 +501,27 @@ def main(argv=None):
     if not sessions:
         return _print_summary(0, 0, 0, reason=f"No subject/session/dwi folders found in '{root}'.")
 
+    stroke_masks = {}
+    if args.exclude_stroke_mask:
+        # Check every session before starting children or creating output folders.
+        for dwi in sessions:
+            context = str(dwi.relative_to(root))
+            try:
+                masks = _find_rois(dwi, "Stroke_mask")
+            except OSError as error:
+                print(f"Error: [{context}] Cannot search for stroke masks: {error}. Aborting batch.",
+                      file=sys.stderr)
+                return _print_summary(0, 0, 1)
+            if len(masks) > 1:
+                print(f"Error: [{context}] Multiple matching stroke masks: "
+                      f"{', '.join(path.name for path in masks)}. Aborting batch.", file=sys.stderr)
+                session = f"{dwi.parent.parent.name} / {dwi.parent.name}"
+                return _print_summary(0, 0, 1, failed_sessions={session: "multiple stroke masks"})
+            stroke_masks[dwi] = masks[0] if masks else None
+            if not masks:
+                print(f"Warning: [{context}] No stroke mask matching '*Stroke_mask.nii[.gz]' "
+                      "directly in dwi. Calculating medians without stroke exclusion.", file=sys.stderr)
+
     if output_base is not None:
         try:
             for metric in cohort_rows:
@@ -496,7 +536,7 @@ def main(argv=None):
         context = str(dwi.relative_to(root))
         session = f"{dwi.parent.parent.name} / {dwi.parent.name}"
         result = _run_session(dwi, context, roi_name, args.metric, translator, extractor, cohort_rows,
-                              include_group=groups is not None)
+                              include_group=groups is not None, stroke_mask=stroke_masks.get(dwi))
         succeeded += result.succeeded
         skipped += result.skipped
         failed += result.failed
