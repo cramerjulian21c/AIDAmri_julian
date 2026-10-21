@@ -757,7 +757,7 @@ python batch_DTIdata_extract.py -i /path/to/proc_folder -r annosplit_parental -t
 
 The batch searches only directly inside each session's `dwi` folder for files ending in `Stroke_mask.nii` or `Stroke_mask.nii.gz`, ignoring case. It does not search subfolders or match files such as `Stroke_mask_anno.nii.gz`. A unique match is passed to each extraction in that session. If no mask exists, the batch warns once in the terminal with the subject/session and calculates normal medians without passing a mask argument; those individual CSVs retain their regular names. Multiple matches or a directory read error abort the entire batch before any extraction starts. Without the switch, no mask search is performed.
 
-With `-o`, the batch reads the individual CSV variant produced for each session and retains empty median cells for fully excluded ROIs. The cohort filenames remain unchanged, for example `cohort_fa.csv`, and may contain both sessions with stroke exclusion and sessions without a mask.
+With `-o`, the batch reads the individual CSV variant produced for each session and retains empty median cells for missing atlas regions and fully excluded ROIs, including runs without stroke exclusion. ROI columns follow the translation-table order; fully empty region columns and sessions are retained. The cohort filenames remain unchanged, for example `cohort_fa.csv`, and may contain both sessions with stroke exclusion and sessions without a mask.
 
 <h3 id="preprocessing-of-fmri-data">Preprocessing of fMRI data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 

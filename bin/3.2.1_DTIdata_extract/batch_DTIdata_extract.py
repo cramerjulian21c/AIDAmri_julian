@@ -14,7 +14,7 @@ directory read error abort the batch. Forward a unique mask path to the extracto
 Without a mask, warn once per session and extract normally without the mask option.
 Individual CSVs gain _exclude-stroke only when a mask is used. Cohort filenames
 are unchanged and may combine sessions with and without stroke exclusion.
-Retain fully excluded ROI medians as empty cells in cohort tables.
+Retain missing and fully excluded ROI medians as empty cells in cohort tables.
 
 The extractor creates individual CSV files beside the parameter maps.
 Optionally pass -o/--output /OUTPUT/PATH/NAME (requires -t) to collect successful
@@ -26,8 +26,9 @@ With -g/--group CSV (requires -o), insert a group column after session.
 Group CSV headers name the groups; cells below contain subject folder names.
 Ignore empty cells, match subjects exactly and leave missing groups empty.
 Rows contain subject, session and median values in acronym columns ordered
-as first encountered in the individual CSVs; append newly encountered
-acronyms at the end. Missing regions are empty cells. Multiple images of one metric
+as first encountered in the individual CSVs, following translation-table order;
+append newly encountered acronyms at the end. Missing regions are empty cells,
+including columns and sessions with all medians empty. Multiple images of one metric
 in a session are ambiguous: report an error and omit that cohort row while
 still running individual extractions. FA and legacy FA0 count as one metric.
 Replace cohort tables atomically; leave existing tables unchanged with a
@@ -185,8 +186,8 @@ def _read_groups(path):
     return groups
 
 
-def _read_region_values(path, include_group=False, allow_empty_medians=False):
-    """Validate an extractor CSV, retaining the original median text."""
+def _read_region_values(path, include_group=False):
+    """Retain median text, including blanks for missing or fully excluded ROIs."""
     values = {}
     roi_ids = set()
     with path.open(encoding="utf-8", newline="") as stream:
@@ -202,7 +203,7 @@ def _read_region_values(path, include_group=False, allow_empty_medians=False):
                 raise ValueError(f"Empty or reserved acronym '{acronym}' at CSV line {reader.line_num}.")
             if acronym in values or roi_id in roi_ids:
                 raise ValueError(f"Ambiguous acronym or ROI ID at CSV line {reader.line_num}: '{acronym}', {roi_id}.")
-            if not (allow_empty_medians and median == "") and not math.isfinite(float(median)):
+            if median != "" and not math.isfinite(float(median)):
                 raise ValueError(f"Nonfinite median for '{acronym}' at CSV line {reader.line_num}.")
             roi_ids.add(roi_id)
             values[acronym] = median
@@ -409,8 +410,7 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
                     if cohort_rows is not None and metric not in ambiguous_metrics:
                         csv_path = Path(getOutfile(rois[0], image, exclude_stroke=stroke_mask is not None))
                         try:
-                            values = _read_region_values(csv_path, include_group=include_group,
-                                                         allow_empty_medians=stroke_mask is not None)
+                            values = _read_region_values(csv_path, include_group=include_group)
                         except (OSError, ValueError, csv.Error) as error:
                             print(f"Error: [{context}] Cannot collect '{csv_path}' for the cohort CSV: {error}",
                                   file=sys.stderr)
@@ -442,7 +442,8 @@ def main(argv=None):
     parser.add_argument("-r", "--roi_name", required=True,
                         help="ROI filename suffix before .nii[.gz], e.g. annosplit or annosplit_parental")
     parser.add_argument("-t", "--translatorTXT",
-                        help="Translation TXT passed to DTIdata_extract.py; required with --output")
+                        help="Translation TXT defining ROI rows and their order; regions absent from an "
+                             "atlas have empty medians. Passed to DTIdata_extract.py; required with --output")
     parser.add_argument("-m", "--metric", choices=(*METRICS, "all"), default="all", type=str.lower,
                         help="Metric suffix before .nii[.gz] (default: all; includes legacy .fa0 maps)")
     parser.add_argument("-o", "--output", metavar="PATH/NAME",

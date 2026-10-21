@@ -1,7 +1,8 @@
 """Extract median DTI parameter values per brain region into a CSV file.
 
 Read a 3D NIfTI parameter map (e.g. FA, MD, RD or AD) and an aligned
-3D ROI labelmap. Calculate the median for each nonzero ROI label.
+3D ROI labelmap. Calculate region medians in translation-table order when
+a table is supplied, otherwise in ascending order of nonzero ROI labels.
 
 Optionally exclude voxels marked 1 in an aligned binary stroke mask with
 --exclude-stroke-mask PATH. Retain fully excluded ROIs with an empty median
@@ -12,8 +13,11 @@ Input images are not modified; remaining metric values must still be finite.
 Optionally translate ROI IDs into acronyms using a whitespace-separated
 text file. For AnnoSplit and AnnoSplit_parental atlases, expand unsplit
 translations into left (L_, original ID) and right (R_, ID + 2000)
-hemisphere entries. Preserve already hemisphere-labelled translations.
-Warn and skip regions missing from a supplied translation table.
+hemisphere entries: all left entries first, then all right entries, each in
+table order. Preserve the order of already hemisphere-labelled translations.
+Keep table entries absent from the atlas with empty median cells and no warning.
+Warn and skip atlas regions missing from a supplied translation table.
+Always omit background ID 0.
 
 Write roi_id, acronym and median columns to a CSV beside the input
 image, using the image basename and atlas marker. Without a translation
@@ -113,8 +117,8 @@ def _split_mapping(mapping, txt_file):
         return mapping
 
     split = {}
-    for roi_id, label in mapping.items():
-        for offset, prefix in ((0, "L_"), (2000, "R_")):
+    for offset, prefix in ((0, "L_"), (2000, "R_")):
+        for roi_id, label in mapping.items():
             hemisphere_id = roi_id + offset
             if hemisphere_id in split:
                 raise ValueError(
@@ -141,11 +145,12 @@ def _read_mapping(txt_file, split_hemispheres=False):
             if roi_id in mapping and mapping[roi_id] != parts[1]:
                 raise ValueError(f"Conflicting labels for ROI ID {roi_id} in {location}.")
             mapping[roi_id] = parts[1]
+    mapping.pop(0, None)
     return _split_mapping(mapping, txt_file) if split_hemispheres else mapping
 
 
 def extractDTIData(img, rois, outfile, txt_file, roi_file=None, stroke_mask=None, image_file=None):
-    """Collect ROI medians outside an optional binary mask; leave excluded ROIs blank."""
+    """Use table order when supplied; leave missing and fully excluded ROI medians blank."""
     if img.ndim != 3 or rois.ndim != 3:
         raise ValueError(f"Image and ROI data must be 3D; got {img.shape} and {rois.shape}.")
     if img.shape != rois.shape:
@@ -166,14 +171,21 @@ def extractDTIData(img, rois, outfile, txt_file, roi_file=None, stroke_mask=None
     mapping = _read_mapping(txt_file, split_hemispheres) if txt_file is not None else None
     regions = np.unique(rois)
     regions = regions[regions != 0]
+    present_ids = {int(region) for region in regions}
+    if mapping is not None:
+        for region in regions:
+            if int(region) not in mapping:
+                print(
+                    f"Warning: No acronym for ROI ID {int(region)} in '{txt_file}'. Skipping region.",
+                    file=sys.stderr,
+                )
+        regions = mapping
     rows = []
     for region in regions:
         roi_id = int(region)
-        if mapping is not None and roi_id not in mapping:
-            print(
-                f"Warning: No acronym for ROI ID {roi_id} in '{txt_file}'. Skipping region.",
-                file=sys.stderr,
-            )
+        acronym = mapping[roi_id] if mapping is not None else ""
+        if roi_id not in present_ids:
+            rows.append((roi_id, acronym, None))
             continue
         selection = rois == region
         if stroke_mask is not None:
@@ -181,7 +193,6 @@ def extractDTIData(img, rois, outfile, txt_file, roi_file=None, stroke_mask=None
         values = img[selection]
         if not np.all(np.isfinite(values)):
             raise ValueError(f"Image contains NaN or infinity in ROI ID {roi_id}.")
-        acronym = mapping[roi_id] if mapping is not None else ""
         if values.size == 0:
             print(
                 f"Warning: [{_extraction_context(image_file)}] All voxels in ROI ID {roi_id} "
@@ -212,8 +223,10 @@ def main(argv=None):
     parser.add_argument(
         "-t", "--translatorTXT",
         help="Optional text file containing integer ROI IDs and labels separated by whitespace. "
-             "For AnnoSplit atlases, unsplit tables are expanded to L_/R_ labels with a +2000 "
-             "right-hemisphere offset; already L_/R_-labelled tables are kept.",
+             "CSV rows follow table order, omitting ID 0; regions absent from the atlas have "
+             "empty medians. For AnnoSplit atlases, unsplit tables expand to all L_ entries "
+             "then all R_ entries in table order, with a +2000 right-hemisphere offset. "
+             "Already L_/R_-labelled tables keep their existing order.",
         type=str,
     )
     parser.add_argument(
