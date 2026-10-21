@@ -34,7 +34,8 @@ still running individual extractions. FA and legacy FA0 count as one metric.
 Replace cohort tables atomically; leave existing tables unchanged with a
 warning when no valid rows are available for a metric.
 Cohort CSVs use normal new-file permissions, respecting umask and inherited permissions.
-Show warnings and errors in the terminal; the extractor writes its own log.
+Show warnings and errors in the terminal; the extractor appends to the session's
+analysis log, creating it if needed. Leave existing process logs unchanged.
 Track dwi/extraction outputs around each extractor invocation and finalize
 even after child-process failure. Pass the tracked folder only to that child
 so the extractor does not start a second tracker for the same folder.
@@ -42,7 +43,7 @@ Suppress normal extractor output such as Done messages during batch runs.
 Write one extractor header per session and batch invocation before the first
 metric, inside extraction tracking; suppress the headers in all children.
 Suppress the child's Git block and append Git information once per attempted
-session to its existing process log after all metrics, including failures.
+session to its existing analysis log after all metrics, including failures.
 Fully skipped sessions do not receive a Git block.
 List failed and fully or partially skipped sessions in the final summary.
 The skipped counter counts skipped entries, which may be whole sessions
@@ -332,7 +333,7 @@ def _run_tracked_extraction(command, dwi, context, image, session_log):
 
 
 def _append_session_git_information(dwi, context):
-    log_path = Path(build_script_log_path(dwi, "process.log"))
+    log_path = Path(build_script_log_path(dwi, "analysis.log"))
     try:
         # Append only to an existing session log.
         if not log_path.exists():
@@ -390,7 +391,7 @@ def _run_session(dwi, context, roi_name, metric_selection, translator, extractor
                       "Omitting this subject/session/metric from the cohort CSV.", file=sys.stderr)
                 failed += 1
 
-    session_log = _SessionLog(Path(build_script_log_path(dwi, "process.log")))
+    session_log = _SessionLog(Path(build_script_log_path(dwi, "analysis.log")))
     try:
         for metric, images in metrics.items():
             if not images:

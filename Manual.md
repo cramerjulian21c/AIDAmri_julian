@@ -743,11 +743,13 @@ python DTIdata_extract.py -i .../dwi/DSI_studio/<metric>.nii.gz -r .../dwi/<roi_
 
 Use this command from the `3.2.1_DTIdata_extract` folder. It saves region-wise FA, AD, RD or MD values together with the corresponding atlas region names. To process multiple subjects iteratively, use the provided `batch_DTIdata_extract.py`.
 
+Both DTI extraction scripts append extraction messages, timestamps and Git information to a separate analysis log, creating it if needed. Within a recognizable subject/session/dwi structure, this is `dwi/<subject>_<session>_dwi_analysis.log`; otherwise it is `analysis.log` in the session's `dwi` folder, or beside the input metric image if there is no enclosing `dwi` folder. Existing analysis-log entries are retained, and existing process logs are left unchanged without copying their contents. In batch runs, one header and one Git block are written per attempted session, with metric entries between them. The analysis log is tracked under manifest stage `extraction` where manifest tracking is available.
+
 ```text
 python DTIdata_extract.py -i .../dwi/DSI_studio/<metric>.nii.gz -r .../dwi/<roi_file>.nii.gz --exclude-stroke-mask .../dwi/<stroke_mask>.nii.gz
 ```
 
-The stroke mask must be a binary 3D NIfTI image containing only 0 and 1, with the same shape and voxel-grid affine as the metric image. Voxels marked 1 are excluded before calculating each ROI median; the input images remain unchanged. A fully excluded ROI retains its CSV row with an empty median cell and a warning in the process log. With this option, the CSV name gains `_exclude-stroke` before `.csv`, for example `<metric>_AnnoSplit_exclude-stroke.csv`, so it can coexist with the regular export. Successful repeated runs replace the CSV for the same variant. The resolved mask path is recorded in the process log.
+The stroke mask must be a binary 3D NIfTI image containing only 0 and 1, with the same shape and voxel-grid affine as the metric image. Voxels marked 1 are excluded before calculating each ROI median; the input images remain unchanged. A fully excluded ROI retains its CSV row with an empty median cell and a warning in the analysis log. With this option, the CSV name gains `_exclude-stroke` before `.csv`, for example `<metric>_AnnoSplit_exclude-stroke.csv`, so it can coexist with the regular export. Successful repeated runs replace the CSV for the same variant. The resolved mask path is recorded in the analysis log.
 
 For batch extraction, use `--exclude-stroke-mask` as a switch without a path:
 

@@ -26,9 +26,11 @@ table, leave the acronym column empty.
 Validate image dimensions, voxel-grid alignment, integer ROI labels
 and finite image values in exported regions before opening the CSV.
 CLI messages are shown in the terminal and appended to the enclosing
-dwi folder's process log, preserving stdout and stderr separately.
+dwi folder's analysis log, preserving stdout and stderr separately.
 Use the batchProc.py timestamp format and Europe/Berlin time zone.
-Outside a dwi folder, use a process log beside the image instead.
+Outside a dwi folder, use an analysis log beside the image instead.
+Create the analysis log if needed and append to it on subsequent runs.
+Leave existing process logs unchanged.
 For identifiable subject/dwi folders, record created and modified outputs
 in the dwi manifest under stage extraction. Otherwise warn and skip tracking.
 When a parent batch owns extraction tracking for the same dwi folder,
@@ -65,10 +67,10 @@ PARENT_GIT_LOG_ENV = "AIDAMRI_DTI_GIT_LOGGED_BY_PARENT"
 PARENT_HEADER_LOG_ENV = "AIDAMRI_DTI_HEADER_LOGGED_BY_PARENT"
 
 
-def _process_log_path(image_file):
+def _analysis_log_path(image_file):
     image = Path(image_file).expanduser().resolve()
     folder = next((parent for parent in image.parents if parent.name == "dwi"), image.parent)
-    return Path(build_script_log_path(folder, "process.log"))
+    return Path(build_script_log_path(folder, "analysis.log"))
 
 
 def _extraction_context(image_file):
@@ -240,7 +242,7 @@ def main(argv=None):
     tracker = None
     finalized = False
     try:
-        log_path = _process_log_path(args.image_file)
+        log_path = _analysis_log_path(args.image_file)
         folder = log_path.parent
         tracking_warning = ""
         tracking_error = ""
@@ -303,7 +305,7 @@ def main(argv=None):
                                 status = 1
                 return status
     except OSError as error:
-        print(f"Error: Cannot write process log for '{args.image_file}': {error}", file=sys.stderr)
+        print(f"Error: Cannot write analysis log for '{args.image_file}': {error}", file=sys.stderr)
         return 1
     finally:
         # Also release the tracker's atexit hook if opening/writing the log failed.
