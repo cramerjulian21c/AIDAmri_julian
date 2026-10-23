@@ -544,6 +544,96 @@ The labelled parental incidence lesion mask (in Allen template space) is stored 
 *IncidenceData_Lesion_mask_Anno_parental.nii.gz
 ```
 
+To combine existing affected-region CSVs across a cohort, run:
+
+```bash
+python bin/3.1_T2Processing/aggregate_affected_regions.py \
+  -i /path/to/proc_folder \
+  -a parental.csv \
+  -o /path/to/affected_regions_summary.csv \
+  --group /path/to/groups.csv
+```
+
+`-i/--input` is the BIDS-like proc folder. The script looks under
+`sub-*/ses-*/anat/affected_Regions/` for filenames containing `affectedRegions`
+and ending with `-a/--suffix`, ignoring case. Use `parental.csv` for parental
+outputs or `affectedRegions.csv` for detailed-atlas outputs. Each session must
+have exactly one matching file; sessions without a match are skipped with a
+warning. No matches, ambiguous matches, or invalid source data cause an error.
+
+The output contains one row per subject/session, sorted by subject and session.
+Columns begin with `subject`, `session`, optional `group`,
+`Total stroke volume [mm3]`, and `Stroke percent of brain [%]`. These are followed
+by **all regional volume columns** (`<Brain region> [mm3]`), then **all regional
+percentage columns** (`<Brain region> [%]`) in the same alphabetical region
+order. Only regions appearing in at least one selected CSV are included;
+regions absent from an individual sample receive `0` in both blocks. Existing
+numbers are preserved without additional rounding. Region names are preserved
+unless an optional translation TXT is supplied.
+
+Use `-t/--translationTXT` to replace regional column names with acronyms:
+
+```bash
+python bin/3.1_T2Processing/aggregate_affected_regions.py \
+  -i /path/to/proc_folder -a parental.csv \
+  -o /path/to/affected_regions_acronyms.csv \
+  -t lib/acronym_rsfMRI.txt
+```
+
+`-g/--group` is optional. The group CSV has group names as column headers and
+subject IDs (including `sub-`) below, for example:
+
+```csv
+tDCS,Sham
+sub-NR1044,sub-NR1051
+```
+
+Without this argument, the output has no `group` column. Missing assignments
+produce a warning and an empty group value; duplicate subject assignments are
+errors. Group assignments apply to every session of a subject. Input files
+remain unchanged; the destination CSV is replaced only after a successful
+export, preserving any existing output if validation or writing fails.
+
+Add `--plot` to create plots from the exported CSV:
+
+```bash
+python bin/3.1_T2Processing/aggregate_affected_regions.py \
+  -i /path/to/proc_folder -a parental.csv -o /path/to/cohort.csv \
+  --group /path/to/groups.csv -t lib/acronym_rsfMRI.txt --plot
+```
+
+The terminal lists available regional column names. Enter `all` to include all
+regions, then choose `mm3` or `%`. Alternatively, enter full column names such as
+`L_CTXsp [%],L_DORpm [%]`. Selection order is preserved; duplicates are removed.
+Commas within original region names are supported without extra quoting.
+Selecting both units creates a separate regional plot for each unit. Invalid
+selections are explained and requested again. A final prompt chooses `mm3` or
+`%` for the lesion-size plot, using the corresponding total stroke column.
+
+Regional boxplots use a logarithmic Y-axis, with one box per group/session in
+each grey region panel. X-axis names omit only the unit suffix; Y-axis labels
+are `% infarct area` or `mm³ infarct area`. **Only positive measurements enter
+regional boxplot statistics.** Excluded zeros are counted per region/group/
+session in the terminal and in total on each regional plot. Empty combinations
+retain their position; regions without positive values are labelled accordingly.
+A regional plot with no positive values is skipped. All selected regions of a
+unit appear in one wide image, with no pagination.
+
+The lesion-size plot shows boxplots with every individual measurement, including
+zeros, on a linear Y-axis. Sessions appear in natural time-point order, e.g.
+PT3 before PT14. Groups are shown side by side: group 1 in blue, group 2 in red, and
+other groups in additional colors. Regional plots use lighter/darker session
+shades. Without a group column, plotting uses sessions only; empty group entries
+are displayed as `Unassigned`. Point jitter is reproducible.
+
+**For both plot types, boxes show the 25th–75th percentiles and the median;
+whiskers show minimum to maximum.** This definition is also printed in the
+terminal. No significance tests are performed.
+
+Plots are saved beside the CSV in `<CSV-stem>_plots/` as PNG (300 dpi) and vector
+PDF: `regions_mm3`, `regions_percent`, and the selected `lesion_size_mm3` or
+`lesion_size_percent`. Raster resolution is reduced for very wide images.
+
 <h3 id="processing-of-roi-stroke-mask-data">Processing of ROI stroke mask data <a href="#contents"><span style="font-size: 1.35em;">↑</span></a></h3>
 
 The anatomical processing can produce two different kinds of regional output: T2 values per atlas region and stroke-mask based incidence or affected-region results.
