@@ -111,16 +111,23 @@ finds files named `subject` below the input folder and edits them in place.
 
 Main operations:
 
-- Removes the first underscore in values following `##$SUBJECT_id=` and
-  `##$SUBJECT_study_name=`.
+- Replaces selected underscores in values following `##$SUBJECT_id=` and
+  `##$SUBJECT_study_name=` with `--r1 TEXT` through `--r6 TEXT`.
+  Use an empty string (`--rN ""`) to delete that underscore.
 - Replaces study-name values matching `baseline...` with `PT0`
   case-insensitively.
 
 Usage:
 
 ```bash
-python reset_naming.py -i /path/to/raw_data
+python reset_naming.py -i /path/to/raw_data --r1 s --r2 c --r3 ""
 ```
+
+This changes `<SP_T1_1_1>` to `<SPsT1c11>`. Positions always refer to the
+original underscores in each field, even if replacement text contains new
+underscores. Unselected or nonexistent positions are unchanged.
+Without any `--rN`, underscores remain unchanged, but the baseline conversion
+still runs. Changed files are overwritten without backups.
 
 ### `remove_carets_spaces.sh`
 
