@@ -3,6 +3,19 @@ import argparse
 import glob
 import re
 
+
+def replace_underscores(value, replacements):
+    """Replace selected underscores by their position in the original value."""
+    position = 0
+    result = []
+    for character in value:
+        if character == '_':
+            position += 1
+            character = replacements.get(position, character)
+        result.append(character)
+    return ''.join(result)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=(
@@ -11,11 +24,13 @@ if __name__ == "__main__":
             "The raw data must follow the structure: projectfolder/subjects/ses/data. "
             "It automatically scans for all 'subject' files within the input folder and "
             "performs two modifications: "
-            "1) Removes the first underscore '_' in the SUBJECT_id and SUBJECT_study_name lines; "
+            "1) Replaces selected underscores in SUBJECT_id and SUBJECT_study_name using "
+            "--r1 TEXT through --r6 TEXT (use an empty string to delete); "
+            "positions refer to each original value and unselected underscores stay unchanged. "
             "2) Replaces the word 'baseline' (case-insensitive) with 'PT0' in the study name. "
             "A corrected version of each 'subject' file is written back to disk. "
             "Example usage: "
-            "python conv2Nifti_auto.py -i /Volumes/Desktop/MRI/raw_data"
+            "python reset_naming.py -i /Volumes/Desktop/MRI/raw_data --r1 c"
         )
     )
 
@@ -26,7 +41,18 @@ if __name__ == "__main__":
         type=str
     )
 
+    for position in range(1, 7):
+        parser.add_argument(
+            f'--r{position}', metavar='TEXT',
+            help=f'Replace original underscore {position} with TEXT; use "" to delete it.'
+        )
+
     args = parser.parse_args()
+    replacements = {}
+    for position in range(1, 7):
+        replacement = getattr(args, f'r{position}')
+        if replacement is not None:
+            replacements[position] = replacement
 
     # Get list of raw data folders or files in input directory
     list_of_raw = sorted([
@@ -58,8 +84,8 @@ if __name__ == "__main__":
                 if idx + 1 < len(lines):
                     original_next = lines[idx + 1]
 
-                    # 1) Remove the first underscore "_" in the following line
-                    new_next = original_next.replace("_", "", 1)
+                    # 1) Apply selections to original underscore positions.
+                    new_next = replace_underscores(original_next, replacements)
 
                     # 2) For study_name only: replace "baseline" with "PT0"
                     if session_id in line:
